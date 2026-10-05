@@ -589,7 +589,7 @@ git commit -m "feat: добавлены Liquid Glass design tokens и модиф
 - Consumes: `BatteryService.currentData: BatteryData?`
 - Produces: Menu bar app with popover showing battery status
 
-- [ ] **Step 1: Write basic StatusView**
+- [x] **Step 1: Write basic StatusView**
 
 ```swift
 import SwiftUI
@@ -624,7 +624,7 @@ struct StatusView: View {
 }
 ```
 
-- [ ] **Step 2: Create MenuBarPopover**
+- [x] **Step 2: Create MenuBarPopover**
 
 ```swift
 import SwiftUI
@@ -644,7 +644,7 @@ struct MenuBarPopover: View {
 }
 ```
 
-- [ ] **Step 3: Integrate with BatteryManagerApp**
+- [x] **Step 3: Integrate with BatteryManagerApp**
 
 ```swift
 import SwiftUI
@@ -673,13 +673,13 @@ struct BatteryManagerApp: App {
 }
 ```
 
-- [ ] **Step 4: Build and run**
+- [x] **Step 4: Build and run**
 
 Run: `xcodebuild -project BatteryManager.xcodeproj -scheme BatteryManager`
 Then launch app from build folder
 Expected: Menu bar icon appears, shows percentage, click opens popover
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add BatteryManager/Views/ BatteryManager/BatteryManagerApp.swift

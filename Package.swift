@@ -4,9 +4,18 @@ import PackageDescription
 let package = Package(
     name: "MediumWellBatteryCore",
     platforms: [.macOS(.v13)],
-    products: [.library(name: "MediumWellBatteryCore", targets: ["MediumWellBatteryCore"])],
+    products: [
+        .library(name: "MediumWellBatteryCore", targets: ["MediumWellBatteryCore"]),
+        .executable(name: "BatteryManager", targets: ["BatteryManagerApp"])
+    ],
     targets: [
         .target(name: "MediumWellBatteryCore"),
-        .testTarget(name: "MediumWellBatteryCoreTests", dependencies: ["MediumWellBatteryCore"])
+        .executableTarget(
+            name: "BatteryManagerApp",
+            dependencies: ["MediumWellBatteryCore"],
+            path: "App"),
+        .testTarget(
+            name: "MediumWellBatteryCoreTests",
+            dependencies: ["MediumWellBatteryCore"])
     ]
 )

@@ -8,12 +8,20 @@ public struct BatteryInfo: Equatable, Sendable {
     public let isPluggedIn: Bool
     public let voltage: Double
     public let amperage: Double
-    public let temperature: Double
+    public let temperature: Double?
     public let cycleCount: Int
+    /// Мощность подключённого адаптера (AdapterDetails.Watts), nil — адаптера нет.
+    public let adapterWatts: Double?
+    /// Потребление системы (PowerTelemetryData.SystemLoad, mW → W).
+    public let systemPowerWatts: Double?
+    /// Мощность, идущая в батарею (PowerTelemetryData.BatteryPower, mW → W).
+    public let batteryPowerWatts: Double?
 
     public init(currentCharge: Int, maxCapacity: Int, designCapacity: Int,
                 isCharging: Bool, isPluggedIn: Bool, voltage: Double,
-                amperage: Double, temperature: Double, cycleCount: Int) {
+                amperage: Double, temperature: Double?, cycleCount: Int,
+                adapterWatts: Double? = nil, systemPowerWatts: Double? = nil,
+                batteryPowerWatts: Double? = nil) {
         self.currentCharge = min(max(currentCharge, 0), 100)
         self.maxCapacity = max(maxCapacity, 0)
         self.designCapacity = max(designCapacity, 0)
@@ -23,6 +31,9 @@ public struct BatteryInfo: Equatable, Sendable {
         self.amperage = amperage
         self.temperature = temperature
         self.cycleCount = max(cycleCount, 0)
+        self.adapterWatts = adapterWatts
+        self.systemPowerWatts = systemPowerWatts
+        self.batteryPowerWatts = batteryPowerWatts
     }
 
     public var healthPercentage: Int {

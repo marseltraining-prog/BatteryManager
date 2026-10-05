@@ -139,7 +139,7 @@ git tag v0.1.0
 - Consumes: Nothing
 - Produces: `struct BatteryInfo`, `class IOKitBridge` with `func getBatteryInfo() -> BatteryInfo?`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 ```swift
 func testGetBatteryInfo_withValidBattery_returnsData() {
@@ -152,12 +152,12 @@ func testGetBatteryInfo_withValidBattery_returnsData() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `xcodebuild test -project BatteryManager.xcodeproj -scheme BatteryManager`
 Expected: FAIL with "IOKitBridge not found"
 
-- [ ] **Step 3: Define BatteryInfo struct**
+- [x] **Step 3: Define BatteryInfo struct**
 
 ```swift
 struct BatteryInfo {
@@ -174,7 +174,7 @@ struct BatteryInfo {
 }
 ```
 
-- [ ] **Step 4: Implement IOKitBridge.getBatteryInfo()**
+- [x] **Step 4: Implement IOKitBridge.getBatteryInfo()**
 
 In `BatteryManager/Services/IOKitBridge.swift`:
 
@@ -233,12 +233,12 @@ class IOKitBridge {
 }
 ```
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 Run: `xcodebuild test -project BatteryManager.xcodeproj -scheme BatteryManager`
 Expected: PASS
 
-- [ ] **Step 6: Test invalid data handling per Review Focus**
+- [x] **Step 6: Test invalid data handling per Review Focus**
 
 ```swift
 func testGetBatteryInfo_withInvalidTemperature_returnsNil() {
@@ -247,7 +247,7 @@ func testGetBatteryInfo_withInvalidTemperature_returnsNil() {
 }
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add BatteryManager/Services/IOKitBridge.swift BatteryManagerTests/

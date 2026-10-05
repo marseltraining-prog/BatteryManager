@@ -40,11 +40,11 @@
 **Interfaces:**
 - Produces: `struct HistoryRecord: Equatable, Sendable` (timestamp: Date, chargePercent: Int, temperature: Double?, powerWatts: Double, adapterWatts: Double?, systemPowerWatts: Double?, batteryPowerWatts: Double?, isCharging: Bool); `final class HistoryStore` with `init(databaseURL: URL) throws`, `func record(_ info: BatteryInfo, at: Date) throws`, `func records(since: Date) throws -> [HistoryRecord]`, `func prune(olderThan: TimeInterval, from: Date) throws`, `static func defaultDatabaseURL() -> URL`
 
-- [ ] **Step 1: Write failing tests** (roundtrip, ordering, nil temperature, prune, corrupt DB recreate)
-- [ ] **Step 2: Run — expect compile failure (types missing)**
-- [ ] **Step 3: Implement HistoryRecord + HistoryStore** (sqlite3_open_v2 with CREATE|READWRITE, WAL; CREATE TABLE IF NOT EXISTS battery_history; corrupt DB → delete file, recreate)
-- [ ] **Step 4: Run — expect pass**
-- [ ] **Step 5: Commit + tag v0.6.0**
+- [x] **Step 1: Write failing tests** (roundtrip, ordering, nil temperature, prune, corrupt DB recreate)
+- [x] **Step 2: Run — expect compile failure (types missing)**
+- [x] **Step 3: Implement HistoryRecord + HistoryStore** (sqlite3_open_v2 with CREATE|READWRITE, WAL; CREATE TABLE IF NOT EXISTS battery_history; corrupt DB → delete file, recreate)
+- [x] **Step 4: Run — expect pass**
+- [x] **Step 5: Commit + tag v0.6.0**
 
 ## Task 2: HistoryRecorder
 
@@ -56,11 +56,11 @@
 - Consumes: `BatteryReading`, `HistoryStore`
 - Produces: `final class HistoryRecorder` with `init(reader:store:interval:retention:)`, `start()/stop()`, `func recordNow() throws`
 
-- [ ] **Step 1: Failing tests** (recordNow writes a row; nil reader result writes nothing; start/stop polls on interval like BatteryService)
-- [ ] **Step 2: Run — fail**
-- [ ] **Step 3: Implement** (DispatchSourceTimer pattern from BatteryService)
-- [ ] **Step 4: Run — pass**
-- [ ] **Step 5: Commit + tag v0.7.0**
+- [x] **Step 1: Failing tests** (recordNow writes a row; nil reader result writes nothing; start/stop polls on interval like BatteryService)
+- [x] **Step 2: Run — fail**
+- [x] **Step 3: Implement** (DispatchSourceTimer pattern from BatteryService)
+- [x] **Step 4: Run — pass**
+- [x] **Step 5: Commit + tag v0.7.0**
 
 ## Task 3: Charts (Swift Charts)
 
@@ -73,11 +73,11 @@
 - Consumes: `[HistoryRecord]`
 - Produces: `struct ChartData` with `static func points(from: [HistoryRecord]) -> (charge: [ChargePoint], temperature: [TempPoint], power: [PowerPoint])`; `struct ChartsView: View` (3 charts, 24h, Liquid Glass cards)
 
-- [ ] **Step 1: Failing tests** (mapping preserves order/values; nil temperature → excluded point; empty input → empty arrays)
-- [ ] **Step 2: Run — fail**
-- [ ] **Step 3: Implement ChartData + ChartsView** (LineMark + gradient fill, per DESIGN.md colors)
-- [ ] **Step 4: Run — pass**
-- [ ] **Step 5: Commit + tag v0.8.0**
+- [x] **Step 1: Failing tests** (mapping preserves order/values; nil temperature → excluded point; empty input → empty arrays)
+- [x] **Step 2: Run — fail**
+- [x] **Step 3: Implement ChartData + ChartsView** (LineMark + gradient fill, per DESIGN.md colors)
+- [x] **Step 4: Run — pass**
+- [x] **Step 5: Commit + tag v0.8.0**
 
 ## Task 4: TemperatureMonitor (overheat protection)
 
@@ -89,11 +89,11 @@
 - Consumes: `BatteryReading`, `TemperatureState`
 - Produces: `protocol ChargeController: Sendable { func setChargingAllowed(_ allowed: Bool) }`; `final class TemperatureMonitor` with `init(reader:controller:)`, `@Published state: TemperatureState`, `func evaluate()`, callback `onStateChange: ((TemperatureState, Double?) -> Void)?`
 
-- [ ] **Step 1: Failing tests** (nil temp → .normal no callback; 34.9→.normal; 35→.warning callback; 40.1→.critical callback + controller.setChargingAllowed(false); back to 30 → .normal + controller.setChargingAllowed(true))
-- [ ] **Step 2: Run — fail**
-- [ ] **Step 3: Implement**
-- [ ] **Step 4: Run — pass**
-- [ ] **Step 5: Commit + tag v0.9.0**
+- [x] **Step 1: Failing tests** (nil temp → .normal no callback; 34.9→.normal; 35→.warning callback; 40.1→.critical callback + controller.setChargingAllowed(false); back to 30 → .normal + controller.setChargingAllowed(true))
+- [x] **Step 2: Run — fail**
+- [x] **Step 3: Implement**
+- [x] **Step 4: Run — pass**
+- [x] **Step 5: Commit + tag v0.9.0**
 
 ## Task 5: Dock icon with percentage
 
@@ -106,9 +106,9 @@
 - Consumes: `BatteryService.currentData`, DesignTokens
 - Produces: `final class DockIconManager` (NSHostingView on NSApplication.shared.dockTile, colors per status: charging green / discharging white / warning amber+⚠️ / critical red+🔥)
 
-- [ ] **Step 1: Implement** (AppKit layer — no unit tests possible; compile-check)
-- [ ] **Step 2: Build app, launch, verify process alive**
-- [ ] **Step 3: Commit + tag v0.10.0**
+- [x] **Step 1: Implement** (AppKit layer — no unit tests possible; compile-check)
+- [x] **Step 2: Build app, launch, verify process alive**
+- [x] **Step 3: Commit + tag v0.10.0**
 
 ## Task 6: Health view + tabs
 
@@ -121,9 +121,9 @@
 - Consumes: BatteryInfo (health fields), HistoryStore, ChartsView, StatusView
 - Produces: `struct HealthView: View` (проектная/максимальная ёмкость, здоровье %, циклы, состояние); popover tabs
 
-- [ ] **Step 1: Implement HealthView + tabs + wiring**
-- [ ] **Step 2: Build app, launch, verify alive; run full test suite**
-- [ ] **Step 3: Commit + tag v1.0.0-beta**
+- [x] **Step 1: Implement HealthView + tabs + wiring**
+- [x] **Step 2: Build app, launch, verify alive; run full test suite**
+- [x] **Step 3: Commit + tag v1.0.0-beta**
 
 ---
 

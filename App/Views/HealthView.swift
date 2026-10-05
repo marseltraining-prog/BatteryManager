@@ -13,13 +13,14 @@ struct HealthView: View {
                         .foregroundColor(DesignTokens.charging)
                     Text("Здоровье батареи")
                         .font(.subheadline.weight(.semibold))
+                        .foregroundColor(DesignTokens.textPrimary)
                     Spacer()
                     Text("\(data.healthPercentage)%")
-                        .font(.subheadline.monospacedDigit())
+                        .font(.subheadline.monospacedDigit().weight(.semibold))
                         .foregroundColor(healthColor(data.healthPercentage))
                 }
 
-                Divider().opacity(0.2)
+                Divider().opacity(0.15)
 
                 row("Проектная ёмкость", "\(data.designCapacity) mAh")
                 row("Максимальная ёмкость", "\(data.maxCapacity) mAh")
@@ -31,7 +32,7 @@ struct HealthView: View {
         } else {
             Text("Батарея не обнаружена")
                 .font(.headline)
-                .foregroundColor(.secondary)
+                .foregroundColor(DesignTokens.textSecondary)
                 .frame(maxWidth: .infinity)
                 .glassCard()
         }
@@ -40,12 +41,13 @@ struct HealthView: View {
     private func row(_ title: String, _ value: String) -> some View {
         HStack {
             Text(title)
-                .foregroundColor(.secondary)
+                .foregroundColor(DesignTokens.textSecondary)
             Spacer()
             Text(value)
+                .foregroundColor(DesignTokens.textPrimary)
                 .monospacedDigit()
         }
-        .font(.caption)
+        .font(.subheadline)
     }
 
     private func healthColor(_ percentage: Int) -> Color {
@@ -53,7 +55,7 @@ struct HealthView: View {
         case 80...: return DesignTokens.charging
         case 60..<80: return DesignTokens.warning
         case 1..<60: return DesignTokens.critical
-        default: return .secondary // нет данных
+        default: return DesignTokens.textTertiary // нет данных
         }
     }
 

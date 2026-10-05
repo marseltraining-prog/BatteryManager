@@ -16,6 +16,9 @@ struct MenuBarPopover: View {
         // Размер окна по спеке (FR-013): 420×680.
         .frame(width: 420, height: 680)
         .background(DesignTokens.surface1)
+        // Тёмная тема обязательна: стекло тёмное, при светлой теме
+        // системные подписи становились чёрными на чёрном.
+        .preferredColorScheme(.dark)
     }
 
     // MARK: - Шапка
@@ -24,7 +27,7 @@ struct MenuBarPopover: View {
         HStack {
             Text("BatteryManager")
                 .font(.subheadline.weight(.semibold))
-                .foregroundColor(.secondary)
+                .foregroundColor(DesignTokens.textSecondary)
 
             Spacer()
 
@@ -36,7 +39,7 @@ struct MenuBarPopover: View {
                 }
                 Text("\(data.currentCharge)%")
                     .font(.subheadline.monospacedDigit())
-                    .foregroundColor(.secondary)
+                    .foregroundColor(DesignTokens.textPrimary)
             }
         }
     }
@@ -75,7 +78,7 @@ struct MenuBarPopover: View {
 
     private func temperatureColor(_ temperature: Double) -> Color {
         switch TemperatureState(value: temperature) {
-        case .normal: return .secondary
+        case .normal: return DesignTokens.textSecondary
         case .warning: return DesignTokens.warning
         case .critical: return DesignTokens.critical
         }

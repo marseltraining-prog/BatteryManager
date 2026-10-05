@@ -38,6 +38,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panel.styleMask = [.titled, .closable, .fullSizeContentView]
             panel.titlebarAppearsTransparent = true
             panel.isReleasedWhenClosed = false
+            // Тёмная тема: содержимое — тёмное стекло, подписи светлые.
+            panel.appearance = NSAppearance(named: .darkAqua)
             self.panel = panel
         }
 

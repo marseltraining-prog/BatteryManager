@@ -45,6 +45,18 @@ public enum DesignTokens {
     /// Перегрев — тёплый оранжевый.
     public static let overheat = Color(hex: "FB923C")
 
+    // MARK: - Текст
+
+    // Явные цвета текста вместо системного `.secondary`: при светлой
+    // системной теме он тёмный и на стекле превращается в «чёрное на чёрном».
+
+    /// Основной текст.
+    public static let textPrimary = Color.white.opacity(0.95)
+    /// Подписи и второстепенные значения.
+    public static let textSecondary = Color.white.opacity(0.70)
+    /// Оси графиков и сноски.
+    public static let textTertiary = Color.white.opacity(0.50)
+
     // MARK: - Градиенты
 
     /// Градиент индикатора заряда.

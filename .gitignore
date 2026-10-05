@@ -1,5 +1,6 @@
 .worktrees/
 .superpowers/sdd/
+.tmp/
 DerivedData/
 build/
 *.xcuserstate
@@ -7,3 +8,4 @@ xcuserdata/
 *.db
 *.db-shm
 *.db-wal
+.build/

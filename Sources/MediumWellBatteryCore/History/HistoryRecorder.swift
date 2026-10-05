@@ -5,7 +5,7 @@ import Foundation
 ///
 /// Review Focus: если источник не отдал данных (нет батареи / сбой IOKit),
 /// запись пропускается — в базе не появляются пустые строки.
-public final class HistoryRecorder: Sendable {
+public final class HistoryRecorder {
     private let reader: any BatteryReading
     private let store: HistoryStore
     private let interval: TimeInterval

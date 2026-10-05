@@ -702,14 +702,14 @@ git commit -m "feat: добавлен menu bar popover с базовым UI
 - Consumes: Existing local git repo
 - Produces: GitHub repository at github.com/mediumwell/BatteryManager
 
-- [ ] **Step 1: Create GitHub repo**
+- [x] **Step 1: Create GitHub repo**
 
 Manual step or via GitHub CLI:
 ```bash
 gh repo create mediumwell/BatteryManager --public --description "Современный менеджер батареи для macOS с Liquid Glass дизайном"
 ```
 
-- [ ] **Step 2: Add remote and push**
+- [x] **Step 2: Add remote and push**
 
 ```bash
 cd /Users/macbookmarsel/Documents/deepseek-harness/default-workspace/MediumWell/BatteryManager
@@ -718,7 +718,7 @@ git branch -M main
 git push -u origin main --tags
 ```
 
-- [ ] **Step 3: Verify repo online**
+- [x] **Step 3: Verify repo online**
 
 Open: https://github.com/mediumwell/BatteryManager
 Expected: Repository visible with README, commits, and v0.1.0 tag

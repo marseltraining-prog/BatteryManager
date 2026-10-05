@@ -30,6 +30,11 @@ mkdir -p "$MODULE_CACHE" "$BUILD" "$APP/Contents/MacOS" "$APP/Contents/Framework
 CORE_SOURCES="$(find Sources/MediumWellBatteryCore -name '*.swift' | sort)"
 APP_SOURCES="$(find App -name '*.swift' | sort)"
 
+# C-слой доступа к SMC (см. scripts/run-tests.sh).
+clang -c -O2 -target "$TARGET" -isysroot "$SDK" \
+    -I Sources/CSMC/include \
+    Sources/CSMC/CSMC.c -o "$BUILD/CSMC.o"
+
 # 1. Ядро как динамическая библиотека (та же, что использует тест-раннер).
 swiftc -emit-library -emit-module \
     -module-name MediumWellBatteryCore \
@@ -37,9 +42,10 @@ swiftc -emit-library -emit-module \
     -target "$TARGET" \
     -sdk "$SDK" \
     -module-cache-path "$MODULE_CACHE" \
+    -I Sources/CSMC/include \
     -emit-module-path "$BUILD/MediumWellBatteryCore.swiftmodule" \
     -o "$BUILD/libMediumWellBatteryCore.dylib" \
-    $CORE_SOURCES
+    $CORE_SOURCES "$BUILD/CSMC.o"
 
 # 2. Компиляция приложения.
 swiftc \
@@ -48,9 +54,10 @@ swiftc \
     -target "$TARGET" \
     -sdk "$SDK" \
     -module-cache-path "$MODULE_CACHE" \
+    -I Sources/CSMC/include \
     -I "$BUILD" -L "$BUILD" -lMediumWellBatteryCore \
     -Xlinker -rpath -Xlinker "@loader_path/../Frameworks" \
-    $APP_SOURCES \
+    $APP_SOURCES "$BUILD/CSMC.o" \
     -o "$APP/Contents/MacOS/BatteryManager"
 
 # 3. Ядро внутрь бандла.

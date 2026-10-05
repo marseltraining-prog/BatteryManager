@@ -26,16 +26,9 @@ struct StatusView: View {
 
                 Divider().opacity(0.15)
 
-                // Распределение мощности (FR-005): сколько идёт в батарею,
-                // сколько потребляет система.
-                VStack(spacing: DesignTokens.spacing2) {
-                    powerRow(label: "В батарею",
-                             value: data.batteryPowerWatts,
-                             color: DesignTokens.charging)
-                    powerRow(label: "Система",
-                             value: data.systemPowerWatts,
-                             color: DesignTokens.discharging)
-                }
+                // Распределение мощности по источникам (FR-005),
+                // обновляется раз в секунду.
+                PowerFlowView(data: data)
             }
             .glassCard()
         } else {
@@ -59,18 +52,6 @@ struct StatusView: View {
                 .monospacedDigit()
         }
         .font(.subheadline)
-    }
-
-    private func powerRow(label: String, value: Double?, color: Color) -> some View {
-        HStack {
-            Text(label)
-                .font(.caption)
-                .foregroundColor(DesignTokens.textSecondary)
-            Spacer()
-            Text(value.map { String(format: "%.1f W", $0) } ?? "—")
-                .font(.caption.monospacedDigit())
-                .foregroundColor(color)
-        }
     }
 
     // MARK: - Тексты

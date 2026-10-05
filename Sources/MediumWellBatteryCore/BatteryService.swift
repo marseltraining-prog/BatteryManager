@@ -28,9 +28,10 @@ public final class BatteryService: ObservableObject {
 
     /// - Parameters:
     ///   - bridge: источник данных (по умолчанию — реальный `IOKitBridge`).
-    ///   - updateInterval: период опроса в секундах (по умолчанию 2.0 — по спеке).
+    ///   - updateInterval: период опроса в секундах (1.0 — визуализация
+    ///     мощности обновляется раз в секунду).
     public init(bridge: any BatteryReading = IOKitBridge(),
-                updateInterval: TimeInterval = 2.0) {
+                updateInterval: TimeInterval = 1.0) {
         self.bridge = bridge
         self.updateInterval = updateInterval
     }

@@ -24,6 +24,12 @@ mkdir -p "$MODULE_CACHE" "$BUILD"
 CORE_SOURCES="$(find Sources/MediumWellBatteryCore -name '*.swift' | sort)"
 TEST_SOURCES="$(find Tests/MediumWellBatteryCoreTests -name '*.swift' | sort)"
 
+# C-слой доступа к SMC: Swift не гарантирует раскладку структуры AppleSMC.
+echo "Компиляция C-слоя SMC..."
+clang -c -O2 -target "$TARGET" -isysroot "$SDK" \
+    -I Sources/CSMC/include \
+    Sources/CSMC/CSMC.c -o "$BUILD/CSMC.o"
+
 # 1. Компиляция ядра как модуля с поддержкой @testable
 swiftc -emit-library -emit-module \
     -module-name MediumWellBatteryCore \
@@ -31,9 +37,10 @@ swiftc -emit-library -emit-module \
     -target "$TARGET" \
     -sdk "$SDK" \
     -module-cache-path "$MODULE_CACHE" \
+    -I Sources/CSMC/include \
     -emit-module-path "$BUILD/MediumWellBatteryCore.swiftmodule" \
     -o "$BUILD/libMediumWellBatteryCore.dylib" \
-    $CORE_SOURCES
+    $CORE_SOURCES "$BUILD/CSMC.o"
 
 # 2. Компиляция тестового исполняемого файла
 swiftc \
@@ -41,12 +48,13 @@ swiftc \
     -sdk "$SDK" \
     -module-cache-path "$MODULE_CACHE" \
     -plugin-path "$CLT/usr/lib/swift/host/plugins/testing" \
+    -I Sources/CSMC/include \
     -F "$CLT/Library/Developer/Frameworks" \
     -I "$BUILD" -L "$BUILD" -lMediumWellBatteryCore \
     -Xlinker -rpath -Xlinker "$BUILD" \
     -Xlinker -rpath -Xlinker "$CLT/Library/Developer/Frameworks" \
     -Xlinker -rpath -Xlinker "$CLT/Library/Developer/usr/lib" \
-    $TEST_SOURCES scripts/test-main.swift \
+    $TEST_SOURCES scripts/test-main.swift "$BUILD/CSMC.o" \
     -o "$BUILD/test-runner"
 
 # 3. Запуск тестов

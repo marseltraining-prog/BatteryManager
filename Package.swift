@@ -9,7 +9,8 @@ let package = Package(
         .executable(name: "BatteryManager", targets: ["BatteryManagerApp"])
     ],
     targets: [
-        .target(name: "MediumWellBatteryCore"),
+        .target(name: "CSMC", path: "Sources/CSMC"),
+        .target(name: "MediumWellBatteryCore", dependencies: ["CSMC"]),
         .executableTarget(
             name: "BatteryManagerApp",
             dependencies: ["MediumWellBatteryCore"],

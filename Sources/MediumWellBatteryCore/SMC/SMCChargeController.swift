@@ -82,7 +82,22 @@ public final class SMCChargeController: ChargeController {
     private let candidates: [ChargeControlKey]
 
     /// Последняя ошибка записи — для отображения в интерфейсе.
-    public private(set) var lastError: ChargeControlError?
+    /// Доступ под замком: контроллер вызывается и из монитора температуры,
+    /// и из интерфейса.
+    private let errorLock = NSLock()
+    private nonisolated(unsafe) var storedError: ChargeControlError?
+
+    public var lastError: ChargeControlError? {
+        errorLock.lock()
+        defer { errorLock.unlock() }
+        return storedError
+    }
+
+    private func setLastError(_ error: ChargeControlError?) {
+        errorLock.lock()
+        defer { errorLock.unlock() }
+        storedError = error
+    }
 
     public init(
         smc: any SMCWriting = SMCAccess(),
@@ -105,7 +120,7 @@ public final class SMCChargeController: ChargeController {
     /// Разрешить или запретить зарядку (FR-001, FR-003).
     public func setChargingAllowed(_ allowed: Bool) {
         guard let key = detectedKey else {
-            lastError = .noSupportedKey
+            setLastError(.noSupportedKey)
             return
         }
 
@@ -116,12 +131,12 @@ public final class SMCChargeController: ChargeController {
             if let companion = key.companionKey {
                 try smc.write(companion, bytes: value)
             }
-            lastError = nil
+            setLastError(nil)
         } catch {
-            lastError = .writeFailed(
+            setLastError(.writeFailed(
                 key: key.key,
                 reason: (error as? LocalizedError)?.errorDescription
-                    ?? String(describing: error))
+                    ?? String(describing: error)))
         }
     }
 }

@@ -63,22 +63,40 @@
 - [x] **Step 5: Commit + tag v0.7.0**
 
 ## Task 3: Charts (Swift Charts)
+## Task 3: Charts (Swift Charts)
+
 
 **Files:**
+**Files:**
+- Create: `Sources/MediumWellBatteryCore/History/ChartData.swift`
 - Create: `Sources/MediumWellBatteryCore/History/ChartData.swift`
 - Create: `App/Views/ChartsView.swift`
+- Create: `App/Views/ChartsView.swift`
+- Create: `Tests/MediumWellBatteryCoreTests/ChartDataTests.swift`
 - Create: `Tests/MediumWellBatteryCoreTests/ChartDataTests.swift`
 
+
+**Interfaces:**
 **Interfaces:**
 - Consumes: `[HistoryRecord]`
+- Consumes: `[HistoryRecord]`
+- Produces: `struct ChartData` with `static func points(from: [HistoryRecord]) -> (charge: [ChargePoint], temperature: [TempPoint], power: [PowerPoint])`; `struct ChartsView: View` (3 charts, 24h, Liquid Glass cards)
 - Produces: `struct ChartData` with `static func points(from: [HistoryRecord]) -> (charge: [ChargePoint], temperature: [TempPoint], power: [PowerPoint])`; `struct ChartsView: View` (3 charts, 24h, Liquid Glass cards)
 
+
+- [x] **Step 1: Failing tests** (mapping preserves order/values; nil temperature → excluded point; empty input → empty arrays)
 - [x] **Step 1: Failing tests** (mapping preserves order/values; nil temperature → excluded point; empty input → empty arrays)
 - [x] **Step 2: Run — fail**
+- [x] **Step 2: Run — fail**
+- [x] **Step 3: Implement ChartData + ChartsView** (LineMark + gradient fill, per DESIGN.md colors)
 - [x] **Step 3: Implement ChartData + ChartsView** (LineMark + gradient fill, per DESIGN.md colors)
 - [x] **Step 4: Run — pass**
+- [x] **Step 4: Run — pass**
+- [x] **Step 5: Commit + tag v0.8.0**
 - [x] **Step 5: Commit + tag v0.8.0**
 
+
+## Task 4: TemperatureMonitor (overheat protection)
 ## Task 4: TemperatureMonitor (overheat protection)
 
 **Files:**

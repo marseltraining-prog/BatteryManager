@@ -417,6 +417,11 @@ git commit -m "feat: добавлен BatteryService для мониторинг
 
 ## Task 4: Liquid Glass Design Tokens
 
+> **Статус (v0.4.0):** шаги 1-2 и 5 выполнены. Шаги 3-4 (визуальная проверка
+> превью) отложены до установки Xcode — превью-рендер в этой среде невозможен.
+> Вместо этого токены проверены программно: парсинг Color(hex:) и
+> соответствие акцентов DESIGN.md (см. DesignTokensTests).
+
 **Files:**
 - Create: `BatteryManager/Views/Styling/DesignTokens.swift`
 - Create: `BatteryManager/Views/Styling/LiquidGlassModifiers.swift`
@@ -425,7 +430,7 @@ git commit -m "feat: добавлен BatteryService для мониторинг
 - Consumes: Nothing
 - Produces: `struct DesignTokens`, `View.liquidGlassBackground()`, `View.glassButton()`, `View.glassCard()`
 
-- [ ] **Step 1: Define DesignTokens**
+- [x] **Step 1: Define DesignTokens**
 
 ```swift
 import SwiftUI
@@ -483,7 +488,7 @@ extension Color {
 }
 ```
 
-- [ ] **Step 2: Define LiquidGlassModifiers**
+- [x] **Step 2: Define LiquidGlassModifiers**
 
 ```swift
 import SwiftUI
@@ -558,7 +563,7 @@ struct DesignTokens_Previews: PreviewProvider {
 Run: Open Xcode, check Canvas preview shows Liquid Glass effects
 Expected: Translucent surfaces with blur, gradients, shadows visible
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add BatteryManager/Views/Styling/

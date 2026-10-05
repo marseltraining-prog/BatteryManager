@@ -20,6 +20,10 @@ MODULE_CACHE="$TMP/module-cache"
 
 mkdir -p "$MODULE_CACHE" "$BUILD"
 
+# Все Swift-файлы ядра и тестов (рекурсивно)
+CORE_SOURCES="$(find Sources/MediumWellBatteryCore -name '*.swift' | sort)"
+TEST_SOURCES="$(find Tests/MediumWellBatteryCoreTests -name '*.swift' | sort)"
+
 # 1. Компиляция ядра как модуля с поддержкой @testable
 swiftc -emit-library -emit-module \
     -module-name MediumWellBatteryCore \
@@ -29,7 +33,7 @@ swiftc -emit-library -emit-module \
     -module-cache-path "$MODULE_CACHE" \
     -emit-module-path "$BUILD/MediumWellBatteryCore.swiftmodule" \
     -o "$BUILD/libMediumWellBatteryCore.dylib" \
-    Sources/MediumWellBatteryCore/*.swift
+    $CORE_SOURCES
 
 # 2. Компиляция тестового исполняемого файла
 swiftc \
@@ -42,7 +46,7 @@ swiftc \
     -Xlinker -rpath -Xlinker "$BUILD" \
     -Xlinker -rpath -Xlinker "$CLT/Library/Developer/Frameworks" \
     -Xlinker -rpath -Xlinker "$CLT/Library/Developer/usr/lib" \
-    Tests/MediumWellBatteryCoreTests/*.swift scripts/test-main.swift \
+    $TEST_SOURCES scripts/test-main.swift \
     -o "$BUILD/test-runner"
 
 # 3. Запуск тестов

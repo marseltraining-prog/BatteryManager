@@ -1,28 +1,30 @@
 import SwiftUI
-import MediumWellBatteryCore
 
 @main
 struct BatteryManagerApp: App {
-    @StateObject private var batteryService = BatteryManagerApp.makeService()
-
-    /// Фабрика сервиса: опрос батареи стартует вместе с приложением,
-    /// чтобы иконка в строке меню обновлялась даже при закрытом окне.
-    private static func makeService() -> BatteryService {
-        let service = BatteryService()
-        service.startMonitoring()
-        return service
-    }
+    /// Модель владеет всеми сервисами и запускает их в своём init —
+    /// иконка в строке меню обновляется сразу, без открытия окна.
+    @StateObject private var model = AppModel()
 
     var body: some Scene {
         MenuBarExtra {
-            MenuBarPopover(batteryService: batteryService)
+            MenuBarPopover(model: model)
         } label: {
-            if let data = batteryService.currentData {
-                Text("\(data.currentCharge)%")
-            } else {
-                Text("--")
-            }
+            MenuBarLabel(model: model)
         }
         .menuBarExtraStyle(.window)
+    }
+}
+
+/// Подпись иконки в строке меню: процент заряда.
+private struct MenuBarLabel: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        if let data = model.batteryService.currentData {
+            Text("\(data.currentCharge)%")
+        } else {
+            Text("--")
+        }
     }
 }

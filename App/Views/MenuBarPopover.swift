@@ -1,30 +1,80 @@
-import SwiftUI
 import MediumWellBatteryCore
+import SwiftUI
 
-/// Главное всплывающее окно приложения: вкладка «Статус».
-/// Вкладки «Графики» и «Здоровье» добавляются следующими задачами плана.
+/// Главное всплывающее окно: шапка, вкладки и содержимое выбранной вкладки.
 struct MenuBarPopover: View {
-    @ObservedObject var batteryService: BatteryService
+    @ObservedObject var model: AppModel
 
     var body: some View {
-        VStack(spacing: DesignTokens.spacing4) {
-            // Заголовок окна.
-            HStack {
-                Text("BatteryManager")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(.secondary)
-                Spacer()
-                if let data = batteryService.currentData {
-                    Text("\(data.currentCharge)%")
-                        .font(.subheadline.monospacedDigit())
-                        .foregroundColor(.secondary)
-                }
-            }
-
-            StatusView(data: batteryService.currentData)
+        VStack(spacing: DesignTokens.spacing3) {
+            header
+            tabPicker
+            content
         }
         .padding(DesignTokens.spacing4)
         .frame(width: 420)
         .background(DesignTokens.surface1)
+    }
+
+    // MARK: - Шапка
+
+    private var header: some View {
+        HStack {
+            Text("BatteryManager")
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.secondary)
+
+            Spacer()
+
+            if let data = model.batteryService.currentData {
+                if let temperature = data.temperature {
+                    Text(String(format: "%.1f°C", temperature))
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundColor(temperatureColor(temperature))
+                }
+                Text("\(data.currentCharge)%")
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+
+    // MARK: - Вкладки
+
+    private var tabPicker: some View {
+        Picker("", selection: $model.selectedTab) {
+            ForEach(PopoverTab.allCases) { tab in
+                Text(tab.rawValue).tag(tab)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+    }
+
+    // MARK: - Содержимое
+
+    @ViewBuilder
+    private var content: some View {
+        switch model.selectedTab {
+        case .status:
+            StatusView(data: model.batteryService.currentData)
+
+        case .charts:
+            ScrollView {
+                ChartsView(data: model.chartData)
+            }
+            .frame(height: 340)
+
+        case .health:
+            HealthView(data: model.batteryService.currentData)
+        }
+    }
+
+    private func temperatureColor(_ temperature: Double) -> Color {
+        switch TemperatureState(value: temperature) {
+        case .normal: return .secondary
+        case .warning: return DesignTokens.warning
+        case .critical: return DesignTokens.critical
+        }
     }
 }

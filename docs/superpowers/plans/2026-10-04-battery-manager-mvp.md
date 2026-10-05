@@ -271,7 +271,7 @@ git commit -m "feat: добавлен IOKit bridge для чтения данн�
 - Consumes: `IOKitBridge.getBatteryInfo() -> BatteryInfo?`
 - Produces: `class BatteryService: ObservableObject` with `@Published var currentData: BatteryData?`, `func startMonitoring()`, `func stopMonitoring()`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 ```swift
 func testStartMonitoring_updatesCurrentData() {
@@ -289,12 +289,12 @@ func testStartMonitoring_updatesCurrentData() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `xcodebuild test -project BatteryManager.xcodeproj -scheme BatteryManager`
 Expected: FAIL with "BatteryService not found"
 
-- [ ] **Step 3: Define BatteryData model**
+- [x] **Step 3: Define BatteryData model**
 
 ```swift
 struct BatteryData: Identifiable {
@@ -331,7 +331,7 @@ enum BatteryCondition: String {
 }
 ```
 
-- [ ] **Step 4: Implement BatteryService**
+- [x] **Step 4: Implement BatteryService**
 
 ```swift
 import Foundation
@@ -388,12 +388,12 @@ class BatteryService: ObservableObject {
 }
 ```
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 Run: `xcodebuild test -project BatteryManager.xcodeproj -scheme BatteryManager`
 Expected: PASS
 
-- [ ] **Step 6: Test fallback per Review Focus**
+- [x] **Step 6: Test fallback per Review Focus**
 
 ```swift
 func testUpdateBatteryData_whenIOKitFails_usesPreviousData() {
@@ -401,7 +401,7 @@ func testUpdateBatteryData_whenIOKitFails_usesPreviousData() {
 }
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add BatteryManager/Models/ BatteryManager/Services/BatteryService.swift BatteryManagerTests/

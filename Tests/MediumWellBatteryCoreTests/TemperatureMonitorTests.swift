@@ -139,4 +139,29 @@ struct TemperatureMonitorTests {
         #expect(monitor.state == .critical) // состояние не сброшено
         #expect(controller.calls == [false]) // повторно не отключаем
     }
+
+    /// Проверка по готовому снимку: приложение уже получило данные
+    /// от BatteryService, повторное чтение IOKit не нужно (NFR-001).
+    @Test func evaluatesFromProvidedSnapshot() {
+        let controller = RecordingController()
+        let monitor = TemperatureMonitor(
+            reader: StubReader([]), controller: controller)
+
+        monitor.evaluate(info(temperature: 41.0))
+
+        #expect(monitor.state == .critical)
+        #expect(monitor.temperature == 41.0)
+        #expect(controller.calls == [false])
+    }
+
+    @Test func snapshotWithNilTemperatureIsNormal() {
+        let controller = RecordingController()
+        let monitor = TemperatureMonitor(
+            reader: StubReader([]), controller: controller)
+
+        monitor.evaluate(info(temperature: nil))
+
+        #expect(monitor.state == .normal)
+        #expect(controller.calls.isEmpty)
+    }
 }

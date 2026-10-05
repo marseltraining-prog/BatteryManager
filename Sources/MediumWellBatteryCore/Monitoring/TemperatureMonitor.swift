@@ -47,7 +47,12 @@ public final class TemperatureMonitor: ObservableObject {
     /// мы не сбрасываем защиту и не возобновляем зарядку вслепую.
     public func evaluate() {
         guard let info = reader.getBatteryInfo() else { return }
+        evaluate(info)
+    }
 
+    /// Проверка по уже полученному снимку — приложение берёт данные из
+    /// `BatteryService`, чтобы не читать IOKit дважды за один цикл (NFR-001).
+    public func evaluate(_ info: BatteryInfo) {
         temperature = info.temperature
 
         let newState = info.temperature.map {

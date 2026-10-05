@@ -10,9 +10,11 @@ struct MenuBarPopover: View {
             header
             tabPicker
             content
+            Spacer(minLength: 0)
         }
         .padding(DesignTokens.spacing4)
-        .frame(width: 420)
+        // Размер окна по спеке (FR-013): 420×680.
+        .frame(width: 420, height: 680)
         .background(DesignTokens.surface1)
     }
 
@@ -61,9 +63,10 @@ struct MenuBarPopover: View {
 
         case .charts:
             ScrollView {
-                ChartsView(data: model.chartData)
+                ChartsView(data: model.chartData,
+                           historyUnavailable: model.historyUnavailable)
             }
-            .frame(height: 340)
+            .frame(height: 520)
 
         case .health:
             HealthView(data: model.batteryService.currentData)

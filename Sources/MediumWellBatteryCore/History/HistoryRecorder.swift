@@ -35,11 +35,14 @@ public final class HistoryRecorder {
         timer?.cancel()
     }
 
-    /// Запускает периодическую запись. Первая запись — сразу.
+    /// Запускает периодическую запись. Первая запись — сразу, но вне
+    /// вызывающего потока: старт приложения не должен ждать IOKit и диск.
     public func start() {
         guard timer == nil else { return }
 
-        recordInBackground()
+        queue.async { [weak self] in
+            self?.recordInBackground()
+        }
 
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now() + interval, repeating: interval)

@@ -38,14 +38,25 @@ public struct BatteryInfo: Equatable, Sendable {
 
     public var healthPercentage: Int {
         guard designCapacity > 0 else { return 0 }
-        return min(max(Int((Double(maxCapacity) / Double(designCapacity)) * 100.0), 0), 100)
+        // Ограничение выполняется до Int: иначе абсурдные значения
+        // ломают преобразование.
+        let ratio = Double(maxCapacity) / Double(designCapacity)
+        return Int(min(max(ratio * 100.0, 0), 100))
     }
 
     public var powerWatts: Double {
-        abs(voltage * amperage)
+        let magnitude = abs(voltage * amperage)
+        // Знак по состоянию: зарядка — «плюс», разрядка — «минус» (FR-009).
+        // Надёжнее знака InstantAmperage: на части моделей он приходит нулевым.
+        if isCharging { return magnitude }
+        if isPluggedIn && magnitude == 0 { return 0 }
+        return -magnitude
     }
 
     public var condition: BatteryCondition {
+        // Нет данных о проектной ёмкости — состояние неизвестно,
+        // а не «требует обслуживания».
+        guard designCapacity > 0 else { return .unknown }
         switch healthPercentage {
         case 80...: return .normal
         case 60..<80: return .replaceSoon
@@ -58,6 +69,7 @@ public enum BatteryCondition: String, Sendable {
     case normal = "Normal"
     case replaceSoon = "Replace Soon"
     case serviceBattery = "Service Battery"
+    case unknown = "Unknown"
 }
 
 public enum TemperatureState: Equatable, Sendable {

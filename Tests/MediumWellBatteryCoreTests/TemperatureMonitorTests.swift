@@ -36,8 +36,10 @@ struct TemperatureMonitorTests {
         }
     }
 
-    /// Review Focus: нет сенсора — состояние «норма», ничего не отключаем.
-    @Test func nilTemperatureStaysNormalAndSilent() {
+    // MARK: - Уровни (FR-010)
+
+    /// В начале работы сенсора ещё нет — состояние «норма», ничего не трогаем.
+    @Test func initialNilTemperatureStaysNormalAndSilent() {
         let controller = RecordingController()
         let monitor = TemperatureMonitor(
             reader: StubReader([info(temperature: nil)]), controller: controller)
@@ -59,7 +61,7 @@ struct TemperatureMonitorTests {
         #expect(controller.calls.isEmpty)
     }
 
-    /// FR-010 уровень 1: 35-40°C — только предупреждение, заряд не трогаем.
+    /// FR-010 уровень 1: 35-40°C — предупреждение, заряд не трогаем.
     @Test func warningAt35DegreesDoesNotStopCharging() {
         let controller = RecordingController()
         let monitor = TemperatureMonitor(
@@ -83,8 +85,10 @@ struct TemperatureMonitorTests {
         #expect(controller.calls == [false])
     }
 
-    /// FR-011: остывание ниже порога — зарядка возобновляется.
-    @Test func coolingResumesCharging() {
+    // MARK: - Возобновление заряда (FR-011)
+
+    /// Возврат к норме (ниже 35°C) — зарядка возобновляется.
+    @Test func coolingBelowWarningResumesCharging() {
         let controller = RecordingController()
         let monitor = TemperatureMonitor(
             reader: StubReader([info(temperature: 41.0), info(temperature: 30.0)]),
@@ -97,7 +101,80 @@ struct TemperatureMonitorTests {
         #expect(controller.calls == [false, true])
     }
 
-    /// Уведомления только на смену состояния — иначе спам каждый опрос.
+    /// Регрессия C2: 38°C — это ещё диапазон предупреждения, не норма.
+    /// Возобновлять зарядку на 38-40°C нельзя (спека: «ниже 35°C»).
+    @Test func warningAfterCriticalDoesNotResumeCharging() {
+        let controller = RecordingController()
+        let monitor = TemperatureMonitor(
+            reader: StubReader([info(temperature: 41.0), info(temperature: 38.0)]),
+            controller: controller)
+
+        monitor.evaluate()
+        monitor.evaluate()
+
+        #expect(monitor.state == .warning)
+        #expect(controller.calls == [false]) // зарядка остаётся выключенной
+    }
+
+    @Test func resumeHappensJustBelowWarningThreshold() {
+        let controller = RecordingController()
+        let monitor = TemperatureMonitor(
+            reader: StubReader([info(temperature: 41.0), info(temperature: 34.9)]),
+            controller: controller)
+
+        monitor.evaluate()
+        monitor.evaluate()
+
+        #expect(controller.calls == [false, true])
+    }
+
+    // MARK: - Потеря данных сенсора
+
+    /// Регрессия C1: потеря показаний на пике не должна снимать защиту
+    /// и возобновлять зарядку.
+    @Test func sensorLossWhileCriticalKeepsProtection() {
+        let controller = RecordingController()
+        let monitor = TemperatureMonitor(
+            reader: StubReader([info(temperature: 41.0), info(temperature: nil)]),
+            controller: controller)
+
+        monitor.evaluate()
+        monitor.evaluate()
+
+        #expect(monitor.state == .critical)      // состояние сохранено
+        #expect(controller.calls == [false])     // зарядка не включена
+        #expect(monitor.temperature == 41.0)     // последнее известное значение
+    }
+
+    @Test func sensorLossWhileWarningKeepsState() {
+        let controller = RecordingController()
+        let monitor = TemperatureMonitor(
+            reader: StubReader([info(temperature: 37.0), info(temperature: nil)]),
+            controller: controller)
+
+        monitor.evaluate()
+        monitor.evaluate()
+
+        #expect(monitor.state == .warning)
+        #expect(controller.calls.isEmpty)
+    }
+
+    @Test func callbackDoesNotFireOnSensorLoss() {
+        let controller = RecordingController()
+        let monitor = TemperatureMonitor(
+            reader: StubReader([info(temperature: 41.0), info(temperature: nil)]),
+            controller: controller)
+        var events: [TemperatureState] = []
+        monitor.onStateChange = { _, new, _ in events.append(new) }
+
+        monitor.evaluate()
+        monitor.evaluate()
+
+        #expect(events == [.critical]) // без ложного «норма» на потере сенсора
+    }
+
+    // MARK: - Уведомления о смене состояния
+
     @Test func callbackFiresOnlyWhenStateChanges() {
         let controller = RecordingController()
         let monitor = TemperatureMonitor(
@@ -107,7 +184,7 @@ struct TemperatureMonitorTests {
             ]),
             controller: controller)
         var changes: [TemperatureState] = []
-        monitor.onStateChange = { state, _ in changes.append(state) }
+        monitor.onStateChange = { _, new, _ in changes.append(new) }
 
         monitor.evaluate()
         monitor.evaluate()
@@ -116,17 +193,27 @@ struct TemperatureMonitorTests {
         #expect(changes == [.warning, .normal])
     }
 
-    @Test func callbackCarriesTemperatureValue() {
+    /// Прежнее состояние нужно, чтобы отличить нагрев от возобновления заряда.
+    @Test func callbackCarriesPreviousStateAndTemperature() {
         let controller = RecordingController()
         let monitor = TemperatureMonitor(
-            reader: StubReader([info(temperature: 41.5)]), controller: controller)
-        var captured: Double?
-        monitor.onStateChange = { _, temperature in captured = temperature }
+            reader: StubReader([info(temperature: 30.0), info(temperature: 41.5)]),
+            controller: controller)
+        var previousStates: [TemperatureState] = []
+        var capturedTemperature: Double?
+        monitor.onStateChange = { previous, _, temperature in
+            previousStates.append(previous)
+            capturedTemperature = temperature
+        }
 
         monitor.evaluate()
+        monitor.evaluate()
 
-        #expect(captured == 41.5)
+        #expect(previousStates == [.normal])
+        #expect(capturedTemperature == 41.5)
     }
+
+    // MARK: - Прочее
 
     @Test func readerFailureKeepsPreviousState() {
         let controller = RecordingController()
@@ -136,8 +223,8 @@ struct TemperatureMonitorTests {
         monitor.evaluate()
         monitor.evaluate() // сбой чтения
 
-        #expect(monitor.state == .critical) // состояние не сброшено
-        #expect(controller.calls == [false]) // повторно не отключаем
+        #expect(monitor.state == .critical)
+        #expect(controller.calls == [false])
     }
 
     /// Проверка по готовому снимку: приложение уже получило данные
@@ -154,14 +241,16 @@ struct TemperatureMonitorTests {
         #expect(controller.calls == [false])
     }
 
-    @Test func snapshotWithNilTemperatureIsNormal() {
+    /// Перепутанные пороги не должны превращать 30°C в критическую температуру.
+    @Test func invertedThresholdsAreNormalized() {
         let controller = RecordingController()
         let monitor = TemperatureMonitor(
-            reader: StubReader([]), controller: controller)
+            reader: StubReader([]), controller: controller,
+            warningThreshold: 45.0, criticalThreshold: 30.0)
 
-        monitor.evaluate(info(temperature: nil))
+        monitor.evaluate(info(temperature: 35.0))
 
-        #expect(monitor.state == .normal)
+        #expect(monitor.state == .warning) // 30 < 35 < 45
         #expect(controller.calls.isEmpty)
     }
 }

@@ -16,8 +16,13 @@ enum PopoverTab: String, CaseIterable, Identifiable {
 /// оставались простыми.
 @MainActor
 final class AppModel: ObservableObject {
+    /// Общий экземпляр: к нему обращаются и сцены SwiftUI, и делегат
+    /// приложения (панель по клику на иконку Dock).
+    static let shared = AppModel()
+
     @Published private(set) var chartData = ChartData(
         charge: [], temperature: [], power: [])
+    @Published private(set) var historyUnavailable = false
     @Published var selectedTab: PopoverTab = .status
 
     let batteryService = BatteryService()
@@ -28,6 +33,8 @@ final class AppModel: ObservableObject {
     private let notifier = OverheatNotifier()
     private var dockIconManager: DockIconManager?
     private var cancellables: Set<AnyCancellable> = []
+    private let chartQueue = DispatchQueue(
+        label: "com.mediumwell.battery.charts", qos: .utility)
     private var chartTimer: DispatchSourceTimer?
     private var started = false
 
@@ -65,19 +72,43 @@ final class AppModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        temperatureMonitor.onStateChange = { [weak self] state, temperature in
-            self?.notifier.notify(state: state, temperature: temperature)
+        // Уведомления о нагреве и о возобновлении заряда (FR-010, FR-011).
+        temperatureMonitor.onStateChange = { [weak self] previous, current, value in
+            self?.notifier.notify(previous: previous, current: current,
+                                  temperature: value)
         }
 
         startChartRefresh()
     }
 
     /// Перечитывает историю за 24 часа и обновляет точки графиков.
+    /// Чтение идёт вне главного потока: в базе может быть до 1440 записей
+    /// (NFR-001), а публикация результата — на главном потоке.
     func reloadCharts() {
         guard let historyStore else { return }
         let since = Date().addingTimeInterval(-24 * 3600)
-        let records = (try? historyStore.records(since: since)) ?? []
-        chartData = ChartData.points(from: records)
+
+        chartQueue.async { [weak self] in
+            var points: ChartData?
+            var failed = false
+
+            do {
+                let records = try historyStore.records(since: since)
+                points = ChartData.points(from: records)
+            } catch {
+                failed = true
+                NSLog("BatteryManager: не удалось прочитать историю: %@",
+                      String(describing: error))
+            }
+
+            Task { @MainActor in
+                guard let self else { return }
+                self.historyUnavailable = failed
+                if let points {
+                    self.chartData = points
+                }
+            }
+        }
     }
 
     deinit {

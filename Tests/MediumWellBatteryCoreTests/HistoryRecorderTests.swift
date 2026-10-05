@@ -32,7 +32,7 @@ struct HistoryRecorderTests {
         let (store, url) = try makeStore()
         defer { try? FileManager.default.removeItem(at: url) }
 
-        let recorder = try HistoryRecorder(
+        let recorder = HistoryRecorder(
             reader: StubReader([sample]), store: store)
 
         try recorder.recordNow()
@@ -47,7 +47,7 @@ struct HistoryRecorderTests {
         let (store, url) = try makeStore()
         defer { try? FileManager.default.removeItem(at: url) }
 
-        let recorder = try HistoryRecorder(reader: StubReader([nil]), store: store)
+        let recorder = HistoryRecorder(reader: StubReader([nil]), store: store)
         try recorder.recordNow()
 
         let rows = try store.records(since: Date().addingTimeInterval(-60))
@@ -58,7 +58,7 @@ struct HistoryRecorderTests {
         let (store, url) = try makeStore()
         defer { try? FileManager.default.removeItem(at: url) }
 
-        let recorder = try HistoryRecorder(
+        let recorder = HistoryRecorder(
             reader: StubReader([sample, sample, sample, sample]),
             store: store, interval: 0.1)
 

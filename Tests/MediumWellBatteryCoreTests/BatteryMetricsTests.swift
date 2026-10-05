@@ -44,5 +44,62 @@ struct BatteryMetricsTests {
         #expect(weird.voltage == 0)
         #expect(weird.cycleCount == 0)
         #expect(weird.healthPercentage == 0)
+        // Нет данных о ёмкости — состояние неизвестно, а не «к обслуживанию».
+        #expect(weird.condition == .unknown)
+    }
+
+    // MARK: - Знак мощности (FR-009)
+
+    @Test func chargingDrawsPositivePower() {
+        #expect(sample.powerWatts > 0)
+        #expect(abs(sample.powerWatts - 24.0) < 0.001)
+    }
+
+    @Test func dischargingReportsNegativePower() {
+        let discharging = BatteryInfo(
+            currentCharge: 80, maxCapacity: 4551, designCapacity: 4629,
+            isCharging: false, isPluggedIn: false,
+            voltage: 12.6, amperage: -1.5,
+            temperature: 30.0, cycleCount: 85)
+
+        #expect(discharging.powerWatts < 0)
+        #expect(abs(discharging.powerWatts + 18.9) < 0.001)
+    }
+
+    /// Подключён, но заряд не идёт и ток нулевой — потребления нет.
+    @Test func pluggedIdleReportsZeroPower() {
+        let idle = BatteryInfo(
+            currentCharge: 85, maxCapacity: 4551, designCapacity: 4629,
+            isCharging: false, isPluggedIn: true,
+            voltage: 12.6, amperage: 0.0,
+            temperature: 27.0, cycleCount: 85)
+
+        #expect(idle.powerWatts == 0)
+    }
+
+    // MARK: - Границы здоровья
+
+    @Test func conditionReflectsHealthBands() {
+        func condition(max: Int, design: Int) -> BatteryCondition {
+            BatteryInfo(currentCharge: 50, maxCapacity: max, designCapacity: design,
+                        isCharging: false, isPluggedIn: false,
+                        voltage: 12.0, amperage: 0.0,
+                        temperature: 27.0, cycleCount: 10).condition
+        }
+
+        #expect(condition(max: 4629, design: 4629) == .normal)      // 100%
+        #expect(condition(max: 3900, design: 4629) == .normal)      // 84%
+        #expect(condition(max: 3200, design: 4629) == .replaceSoon) // 69%
+        #expect(condition(max: 2500, design: 4629) == .serviceBattery) // 54%
+    }
+
+    /// Абсурдная ёмкость не должна ломать преобразование в Int.
+    @Test func absurdCapacityDoesNotCrash() {
+        let absurd = BatteryInfo(
+            currentCharge: 50, maxCapacity: Int.max, designCapacity: 1,
+            isCharging: false, isPluggedIn: false,
+            voltage: 12.0, amperage: 0.0, temperature: 27.0, cycleCount: 1)
+
+        #expect(absurd.healthPercentage == 100)
     }
 }

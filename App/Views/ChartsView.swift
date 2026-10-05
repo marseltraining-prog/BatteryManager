@@ -3,17 +3,27 @@ import MediumWellBatteryCore
 import SwiftUI
 
 /// Вкладка «Графики»: три графика за последние 24 часа —
-/// заряд, температура и потребление (DESIGN.md).
+/// заряд, температура и потребление (FR-007, FR-008, FR-009).
 struct ChartsView: View {
     let data: ChartData
+    var historyUnavailable: Bool = false
 
     var body: some View {
         VStack(spacing: DesignTokens.spacing3) {
+            if historyUnavailable {
+                // Ошибка чтения истории не должна выглядеть как «нет данных».
+                Label("История недоступна — не удалось прочитать базу",
+                      systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundColor(DesignTokens.warning)
+                    .frame(maxWidth: .infinity)
+            }
+
             chargeCard
             temperatureCard
             powerCard
 
-            if data.charge.isEmpty {
+            if data.charge.isEmpty && !historyUnavailable {
                 Text("Нет данных за последние 24 часа")
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -27,9 +37,22 @@ struct ChartsView: View {
     private var chargeCard: some View {
         chartCard(title: "Заряд", unit: "%", domain: 0...100) {
             ForEach(data.charge) { point in
+                // Заливка под линией (FR-007).
+                AreaMark(
+                    x: .value("Время", point.date),
+                    y: .value("Заряд", point.value),
+                    series: .value("Серия", point.segment)
+                )
+                .interpolationMethod(.catmullRom)
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [DesignTokens.charging.opacity(0.35), .clear],
+                        startPoint: .top, endPoint: .bottom))
+
                 LineMark(
                     x: .value("Время", point.date),
-                    y: .value("Заряд", point.value)
+                    y: .value("Заряд", point.value),
+                    series: .value("Серия", point.segment)
                 )
                 .interpolationMethod(.catmullRom)
                 .foregroundStyle(DesignTokens.charging)
@@ -42,14 +65,11 @@ struct ChartsView: View {
             ForEach(data.temperature) { point in
                 LineMark(
                     x: .value("Время", point.date),
-                    y: .value("Температура", point.value)
+                    y: .value("Температура", point.value),
+                    series: .value("Серия", point.segment)
                 )
                 .interpolationMethod(.catmullRom)
-                // Критический участок подсвечивается красным (FR-010).
-                .foregroundStyle(
-                    TemperatureState(value: point.value) == .critical
-                        ? DesignTokens.critical
-                        : DesignTokens.discharging)
+                .foregroundStyle(temperatureColor(point.value))
             }
         }
     }
@@ -59,14 +79,23 @@ struct ChartsView: View {
             ForEach(data.power) { point in
                 LineMark(
                     x: .value("Время", point.date),
-                    y: .value("Мощность", point.value)
+                    y: .value("Мощность", point.value),
+                    series: .value("Серия", point.segment)
                 )
                 .interpolationMethod(.catmullRom)
+                // Плюс — зарядка (зелёный), минус — разрядка (голубой), FR-009.
                 .foregroundStyle(
-                    point.isCharging
-                        ? DesignTokens.charging
-                        : DesignTokens.discharging)
+                    point.value >= 0 ? DesignTokens.charging : DesignTokens.discharging)
             }
+        }
+    }
+
+    /// Цветовая шкала температуры (FR-008): норма → предупреждение → критика.
+    private func temperatureColor(_ value: Double) -> Color {
+        switch TemperatureState(value: value) {
+        case .normal: return DesignTokens.discharging
+        case .warning: return DesignTokens.warning
+        case .critical: return DesignTokens.critical
         }
     }
 
@@ -109,6 +138,6 @@ struct ChartsView: View {
             .frame(height: 86)
         }
         .padding(DesignTokens.spacing3)
-        .liquidGlassBackground(level: 2, cornerRadius: DesignTokens.radius3)
+        .liquidGlassBackground(level: 2, cornerRadius: DesignTokens.radius2)
     }
 }

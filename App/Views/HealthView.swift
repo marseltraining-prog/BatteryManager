@@ -52,7 +52,8 @@ struct HealthView: View {
         switch percentage {
         case 80...: return DesignTokens.charging
         case 60..<80: return DesignTokens.warning
-        default: return DesignTokens.critical
+        case 1..<60: return DesignTokens.critical
+        default: return .secondary // нет данных
         }
     }
 
@@ -61,6 +62,7 @@ struct HealthView: View {
         case .normal: return "Норма"
         case .replaceSoon: return "Скоро замена"
         case .serviceBattery: return "Требует обслуживания"
+        case .unknown: return "—"
         }
     }
 }

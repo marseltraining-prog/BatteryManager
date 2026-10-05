@@ -1,24 +1,27 @@
 import Foundation
 
-/// Точки для графиков Swift Charts. Отдельные типы — чтобы оси и
-/// форматирование у каждого графика были свои (DESIGN.md).
+/// Точка графика заряда. `segment` разделяет разрывы истории (сон,
+/// выключение) — линия не должна соединять данные через пропуск.
 public struct ChargePoint: Identifiable, Equatable, Sendable {
-    public let id = UUID()
+    public var id: Date { date }
     public let date: Date
     public let value: Int
+    public let segment: Int
 }
 
 public struct TemperaturePoint: Identifiable, Equatable, Sendable {
-    public let id = UUID()
+    public var id: Date { date }
     public let date: Date
     public let value: Double
+    public let segment: Int
 }
 
 public struct PowerPoint: Identifiable, Equatable, Sendable {
-    public let id = UUID()
+    public var id: Date { date }
     public let date: Date
     public let value: Double
     public let isCharging: Bool
+    public let segment: Int
 }
 
 /// Точки трёх графиков за период истории.
@@ -34,23 +37,44 @@ public struct ChartData: Equatable, Sendable {
         self.power = power
     }
 
-    /// Преобразует записи истории в точки графиков, сохраняя порядок.
-    /// Записи без данных температуры дают точку заряда/мощности,
-    /// но не дают точки температуры (Review Focus: пробелы в графике).
-    public static func points(from records: [HistoryRecord]) -> ChartData {
-        ChartData(
-            charge: records.map {
-                ChargePoint(date: $0.timestamp, value: $0.chargePercent)
-            },
-            temperature: records.compactMap { record in
-                record.temperature.map {
-                    TemperaturePoint(date: record.timestamp, value: $0)
-                }
-            },
-            power: records.map {
-                PowerPoint(date: $0.timestamp, value: $0.powerWatts,
-                           isCharging: $0.isCharging)
+    /// Разрыв истории: запись реже, чем 1.5 периода записи (60 с).
+    /// Например, Mac спал — соединять линию через этот промежуток нельзя.
+    public static let defaultGapTolerance: TimeInterval = 90
+
+    /// Преобразует записи истории в точки графиков, сохраняя порядок
+    /// и разрывая линию на пропусках (NFR-006).
+    public static func points(
+        from records: [HistoryRecord],
+        gapTolerance: TimeInterval = defaultGapTolerance
+    ) -> ChartData {
+        var charge: [ChargePoint] = []
+        var temperature: [TemperaturePoint] = []
+        var power: [PowerPoint] = []
+
+        var segment = 0
+        var previousDate: Date?
+
+        for record in records {
+            if let previousDate,
+               record.timestamp.timeIntervalSince(previousDate) > gapTolerance {
+                segment += 1
             }
-        )
+            previousDate = record.timestamp
+
+            charge.append(ChargePoint(date: record.timestamp,
+                                      value: record.chargePercent,
+                                      segment: segment))
+            power.append(PowerPoint(date: record.timestamp,
+                                    value: record.powerWatts,
+                                    isCharging: record.isCharging,
+                                    segment: segment))
+            if let value = record.temperature {
+                temperature.append(TemperaturePoint(date: record.timestamp,
+                                                    value: value,
+                                                    segment: segment))
+            }
+        }
+
+        return ChartData(charge: charge, temperature: temperature, power: power)
     }
 }

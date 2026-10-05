@@ -11,6 +11,7 @@ final class DockIconManager {
     private let batteryService: BatteryService
     private let temperatureMonitor: TemperatureMonitor
     private var cancellables: Set<AnyCancellable> = []
+    private var hostingView: NSHostingView<DockIconView>?
 
     init(batteryService: BatteryService, temperatureMonitor: TemperatureMonitor) {
         self.batteryService = batteryService
@@ -42,6 +43,8 @@ final class DockIconManager {
     }
 
     /// Перерисовывает плитку Dock текущими данными.
+    /// Вью переиспользуется: пересоздание NSHostingView каждые 2 секунды
+    /// заметно нагружало бы CPU (NFR-001).
     func update() {
         let data = batteryService.currentData
         let view = DockIconView(
@@ -49,10 +52,15 @@ final class DockIconManager {
             isCharging: data?.isCharging ?? false,
             state: temperatureMonitor.state)
 
-        let hosting = NSHostingView(rootView: view)
-        hosting.frame = NSRect(x: 0, y: 0, width: 128, height: 128)
+        if let hosting = hostingView {
+            hosting.rootView = view
+        } else {
+            let hosting = NSHostingView(rootView: view)
+            hosting.frame = NSRect(x: 0, y: 0, width: 128, height: 128)
+            hostingView = hosting
+            NSApplication.shared.dockTile.contentView = hosting
+        }
 
-        NSApplication.shared.dockTile.contentView = hosting
         NSApplication.shared.dockTile.display()
     }
 }

@@ -49,7 +49,9 @@ final class AppModel: ObservableObject {
         // Перегрев отключает зарядку через менеджер: после остывания
         // действует лимит пользователя, а не безусловное «заряжать».
         let chargeManager = ChargeManager(
-            controller: HelperChargeController(), settings: chargeSettings)
+            controller: HelperChargeController(),
+            systemLimit: SystemChargeLimit(),
+            settings: chargeSettings)
         self.chargeManager = chargeManager
         temperatureMonitor = TemperatureMonitor(controller: chargeManager)
 
@@ -185,6 +187,8 @@ final class AppModel: ObservableObject {
         timer.schedule(deadline: .now() + 30, repeating: 30)
         timer.setEventHandler { [weak self] in
             self?.reloadCharts()
+            // Лимит могли поменять в Настройках macOS.
+            self?.chargeManager.refreshFromSystem()
         }
         timer.resume()
         chartTimer = timer

@@ -290,6 +290,199 @@ struct ChargeManagerTests {
 }
 
 @Suite
+struct ChargeManagerSystemLimitTests {
+    private final class FakeController: ReportingChargeController,
+                                        @unchecked Sendable {
+        var isSupported = true
+        private(set) var calls: [Bool] = []
+        private(set) var lastError: ChargeControlError?
+        func setChargingAllowed(_ allowed: Bool) { calls.append(allowed) }
+    }
+
+    private final class FakeSystemLimit: SystemChargeLimiting,
+                                         @unchecked Sendable {
+        var isSupported = true
+        var availableLimits = [80, 85, 90, 95, 100]
+        var current: Int? = 100
+        var rejected: Set<Int> = []
+        private(set) var writes: [Int] = []
+
+        func currentLimit() -> Int? { current }
+        func setLimit(_ percent: Int) throws {
+            if rejected.contains(percent) {
+                throw SystemChargeLimitError.rejected(limit: percent, reason: "тест")
+            }
+            writes.append(percent)
+            current = percent
+        }
+    }
+
+    private func make(
+        system: FakeSystemLimit = FakeSystemLimit(),
+        controller: FakeController = FakeController(),
+        savedLimit: Int? = nil
+    ) -> (ChargeManager, FakeSystemLimit, FakeController, ChargeSettingsStore) {
+        let name = "ChargeManagerSystemLimitTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        let store = ChargeSettingsStore(defaults: defaults)
+        if let savedLimit { store.limit = savedLimit }
+        let manager = ChargeManager(
+            controller: controller, systemLimit: system, settings: store)
+        return (manager, system, controller, store)
+    }
+
+    /// Источник истины — система: при запуске берётся её лимит.
+    @Test func adoptsSystemLimitOnStart() {
+        let system = FakeSystemLimit()
+        system.current = 80
+        let (manager, _, controller, store) = make(system: system, savedLimit: 95)
+        #expect(manager.usesSystemLimit)
+        #expect(manager.limit == 80)
+        #expect(store.limit == 80)
+        #expect(manager.availableLimits == [80, 85, 90, 95, 100])
+        #expect(system.writes.isEmpty)
+        #expect(controller.calls.isEmpty)
+        #expect(manager.status == .confirmed(allowed: true))
+    }
+
+    @Test func settingLimitWritesToSystemOnce() {
+        let (manager, system, controller, store) = make()
+        manager.setLimit(80)
+        manager.update(charge: 90)
+        manager.update(charge: 91)
+        #expect(system.writes == [80])
+        #expect(store.limit == 80)
+        // Лимит держит система — helper не трогаем.
+        #expect(controller.calls.isEmpty)
+        #expect(manager.holdReason == .limit)
+    }
+
+    /// Система принимает только свои значения — лимит округляется к ближайшему.
+    @Test func limitSnapsToNearestAvailableValue() {
+        let (manager, system, _, _) = make()
+        manager.setLimit(50)
+        #expect(manager.limit == 80)
+        manager.setLimit(88)
+        #expect(manager.limit == 90)
+        #expect(system.writes == [80, 90])
+    }
+
+    /// Лимит работает и без helper: права администратора ему не нужны.
+    @Test func limitWorksWithoutHelper() {
+        let controller = FakeController()
+        controller.isSupported = false
+        let (manager, system, _, _) = make(controller: controller)
+        manager.setLimit(85)
+        #expect(manager.isSupported)
+        #expect(!manager.canHold)
+        #expect(system.writes == [85])
+        #expect(manager.status == .confirmed(allowed: true))
+    }
+
+    @Test func forceChargeLiftsLimitAndRestoresItAtFull() {
+        let system = FakeSystemLimit()
+        system.current = 80
+        let (manager, _, _, _) = make(system: system)
+        manager.update(charge: 80)
+        manager.setMode(.forceCharge)
+        #expect(system.writes == [100])
+        #expect(manager.limit == 80)
+        manager.update(charge: 100)
+        #expect(manager.mode == .limit)
+        #expect(system.writes == [100, 80])
+    }
+
+    @Test func forceDischargeUsesHelperAndKeepsSystemLimit() {
+        let system = FakeSystemLimit()
+        system.current = 80
+        let (manager, _, controller, _) = make(system: system)
+        manager.update(charge: 90)
+        manager.setMode(.forceDischarge)
+        #expect(controller.calls == [false])
+        #expect(manager.status == .confirmed(allowed: false))
+        manager.setMode(.limit)
+        #expect(controller.calls == [false, true])
+        #expect(system.writes.isEmpty)
+    }
+
+    @Test func forceDischargeWithoutHelperIsReportedAsFailure() {
+        let controller = FakeController()
+        controller.isSupported = false
+        let (manager, _, _, _) = make(controller: controller)
+        manager.update(charge: 90)
+        manager.setMode(.forceDischarge)
+        if case .failed = manager.status {} else {
+            Issue.record("ожидался failed, получен \(manager.status)")
+        }
+        manager.setMode(.limit)
+        #expect(manager.status == .confirmed(allowed: true))
+    }
+
+    @Test func overheatHoldsThroughHelper() {
+        let (manager, system, controller, _) = make()
+        manager.update(charge: 50)
+        manager.setChargingAllowed(false)
+        #expect(controller.calls == [false])
+        #expect(manager.holdReason == .overheat)
+        manager.setChargingAllowed(true)
+        #expect(controller.calls == [false, true])
+        #expect(system.writes.isEmpty)
+    }
+
+    /// Отказ системы не выдаётся за успех и не повторяется каждую секунду.
+    @Test func rejectedLimitIsReportedAndNotRetriedBlindly() {
+        let system = FakeSystemLimit()
+        system.rejected = [85]
+        let (manager, _, _, _) = make(system: system)
+        manager.setLimit(85)
+        manager.update(charge: 50)
+        manager.update(charge: 51)
+        #expect(system.writes.isEmpty)
+        if case .failed = manager.status {} else {
+            Issue.record("ожидался failed, получен \(manager.status)")
+        }
+        system.rejected = []
+        manager.retry()
+        #expect(system.writes == [85])
+        #expect(manager.status == .confirmed(allowed: true))
+    }
+
+    /// Лимит поменяли в Настройках macOS — приложение его подхватывает.
+    @Test func refreshAdoptsLimitChangedElsewhere() {
+        let (manager, system, _, store) = make()
+        system.current = 90
+        manager.refreshFromSystem()
+        #expect(manager.limit == 90)
+        #expect(store.limit == 90)
+        #expect(system.writes.isEmpty)
+    }
+
+    /// Выход во время «Заряда»: лимит возвращается, иначе он остался бы снятым.
+    @Test func releaseHoldRestoresLimitAfterForceCharge() {
+        let system = FakeSystemLimit()
+        system.current = 80
+        let (manager, _, _, _) = make(system: system)
+        manager.setMode(.forceCharge)
+        manager.releaseHold()
+        #expect(system.writes == [100, 80])
+        #expect(manager.mode == .limit)
+    }
+
+    /// Система без лимита (старая macOS) — работает прежняя схема через helper.
+    @Test func unsupportedSystemFallsBackToHelperLimit() {
+        let system = FakeSystemLimit()
+        system.isSupported = false
+        let (manager, _, controller, _) = make(system: system, savedLimit: 70)
+        #expect(!manager.usesSystemLimit)
+        #expect(manager.limit == 70)
+        manager.update(charge: 75)
+        #expect(controller.calls == [false])
+        #expect(system.writes.isEmpty)
+    }
+}
+
+@Suite
 struct HelperChargeControllerTests {
     /// Поддельный helper: скрипт, который пишет аргумент в файл.
     private func makeHelper(exitCode: Int32) throws -> (path: String, log: URL) {

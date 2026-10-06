@@ -2,7 +2,11 @@
 // Запускается с setuid root (chmod 4755), принимает только три команды:
 //   hold   — остановить зарядку (CHIE=08 или другой найденный ключ)
 //   allow  — разрешить зарядку (CHIE=00)
-//   status — прочитать и вывести текущее значение ключа
+//   status — прочитать и вывести текущие значения ключей
+//
+// Лимит заряда helper не задаёт: на проверенной машине (macOS 27) ключ
+// CHLT только для чтения, лимит ставится через систему без прав root
+// (см. SystemChargeLimit.swift).
 //
 // Компиляция: см. scripts/build-helper.sh
 // Установка: sudo scripts/install-helper.sh
@@ -41,6 +45,20 @@ static int try_write(const char *key, unsigned char value, int expected_size) {
         data[0] = value;
     }
     return csmc_write_key(key, data, expected_size);
+}
+
+// Лимит заряда, который сейчас действует в контроллере питания:
+// первый байт CHLT — процент. Только для чтения.
+#define LIMIT_KEY "CHLT"
+
+static void print_limit(void) {
+    unsigned char buf[32];
+    uint32_t size = 0, type = 0;
+    if (csmc_read_key(LIMIT_KEY, buf, &size, &type) == 0 && size > 0) {
+        printf("Лимит заряда (" LIMIT_KEY "): %d%%\n", buf[0]);
+    } else {
+        printf("Лимит заряда (" LIMIT_KEY "): ключ отсутствует\n");
+    }
 }
 
 static void print_usage(const char *prog) {
@@ -86,6 +104,7 @@ int main(int argc, char **argv) {
                 printf("  ✗ %s — отсутствует\n", candidates[i].key);
             }
         }
+        print_limit();
         csmc_close();
         return 0;
     }

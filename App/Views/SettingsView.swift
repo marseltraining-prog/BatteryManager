@@ -18,7 +18,10 @@ struct SettingsView: View {
                 set: { setLaunchAtLogin($0) })
             ) {
                 title("Запускать при входе в систему",
-                      "Лимит заряда действует, только пока приложение запущено.")
+                      chargeManager.usesSystemLimit
+                      ? "Лимит заряда держит macOS и без приложения. "
+                        + "Запуск нужен для истории, графиков и защиты от перегрева."
+                      : "Лимит заряда действует, только пока приложение запущено.")
             }
 
             if let launchError {
@@ -30,27 +33,33 @@ struct SettingsView: View {
 
             Divider().opacity(0.15)
 
-            Toggle(isOn: Binding(
-                get: { keepHoldDuringSleep },
-                set: {
-                    keepHoldDuringSleep = $0
-                    settings.keepHoldDuringSleep = $0
-                })
-            ) {
-                title("Сохранять удержание заряда во сне",
-                      "Заряд не поднимется выше лимита, пока Mac спит. "
-                      + "Но во сне приложение не может вернуть зарядку: "
-                      + "за долгий сон батарея может сильно разрядиться.")
+            // Лимит системы действует во сне сам; настройка нужна только
+            // когда лимит держит приложение через helper.
+            if !chargeManager.usesSystemLimit {
+                Toggle(isOn: Binding(
+                    get: { keepHoldDuringSleep },
+                    set: {
+                        keepHoldDuringSleep = $0
+                        settings.keepHoldDuringSleep = $0
+                    })
+                ) {
+                    title("Сохранять удержание заряда во сне",
+                          "Заряд не поднимется выше лимита, пока Mac спит. "
+                          + "Но во сне приложение не может вернуть зарядку: "
+                          + "за долгий сон батарея может сильно разрядиться.")
+                }
+
+                Divider().opacity(0.15)
             }
 
-            Divider().opacity(0.15)
-
             HStack(alignment: .firstTextBaseline) {
-                Text("Helper управления зарядом")
+                Text(chargeManager.usesSystemLimit
+                     ? "Helper («Разряд», стоп при перегреве)"
+                     : "Helper управления зарядом")
                     .foregroundColor(DesignTokens.textSecondary)
                 Spacer()
-                Text(chargeManager.isSupported ? "установлен" : "не установлен")
-                    .foregroundColor(chargeManager.isSupported
+                Text(chargeManager.canHold ? "установлен" : "не установлен")
+                    .foregroundColor(chargeManager.canHold
                         ? DesignTokens.charging : DesignTokens.warning)
             }
             .font(.subheadline)

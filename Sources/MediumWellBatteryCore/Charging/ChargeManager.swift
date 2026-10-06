@@ -41,6 +41,13 @@ public enum ChargeHoldReason: Equatable, Sendable {
 /// Единая точка решений о зарядке: лимит (FR-001), ручные режимы
 /// (FR-002, FR-003) и защита от перегрева (FR-010, FR-011).
 ///
+/// Два канала управления:
+/// - **лимит системы** (`SystemChargeLimiting`) — встроенный лимит macOS.
+///   Его держит сама система, в том числе во сне и без приложения;
+/// - **удержание** (`ReportingChargeController`, helper) — остановка
+///   зарядки по команде: перегрев и режим «Разряд». Если лимита системы
+///   нет, этим же каналом приложение держит лимит само, с гистерезисом.
+///
 /// Монитор температуры обращается к менеджеру как к `ChargeController`:
 /// перегрев имеет приоритет над любым режимом, а после остывания
 /// действует установленный лимит, а не безусловное «заряжать».
@@ -52,35 +59,75 @@ public final class ChargeManager: ObservableObject, ChargeController,
     @Published public private(set) var mode: ChargeMode = .limit
     @Published public private(set) var status: ChargeControlStatus = .idle
     @Published public private(set) var thermalHold = false
+    /// Значения лимита, которые принимает система; пусто — лимита системы
+    /// нет и допустимо любое значение 20...100.
+    @Published public private(set) var availableLimits: [Int] = []
 
     private let controller: any ReportingChargeController
+    private let systemLimit: (any SystemChargeLimiting)?
     private let settings: ChargeSettingsStore
-    private var lastCharge: Int?
-    /// Последняя отправленная команда. Повтор той же команды не шлётся:
-    /// иначе отказ записи повторялся бы каждую секунду.
+    /// Заряд из последнего снимка батареи.
+    public private(set) var lastCharge: Int?
+    /// Последняя отправленная команда удержания. Повтор той же команды
+    /// не шлётся: иначе отказ записи повторялся бы каждую секунду.
     private var lastRequested: Bool
+    /// Состояние канала удержания.
+    private var holdStatus: ChargeControlStatus = .idle
+    /// Лимит, подтверждённый системой.
+    private var systemLimitApplied: Int?
+    /// Лимит, который система отклонила, — повторно не отправляется.
+    private var systemLimitFailed: Int?
+    private var limitError: String?
 
     public init(controller: any ReportingChargeController,
+                systemLimit: (any SystemChargeLimiting)? = nil,
                 settings: ChargeSettingsStore = ChargeSettingsStore()) {
         self.controller = controller
         self.settings = settings
         self.limit = settings.limit
         self.lastRequested = settings.lastAppliedAllowed
-        if !controller.isSupported {
-            status = .unsupported
+
+        let limits = systemLimit?.isSupported == true
+            ? systemLimit?.availableLimits ?? [] : []
+        self.systemLimit = limits.isEmpty ? nil : systemLimit
+        self.availableLimits = limits
+
+        if usesSystemLimit {
+            // Источник истины — система: лимит могли поменять в Настройках.
+            adoptSystemLimit()
+        } else if !controller.isSupported {
+            holdStatus = .unsupported
         }
+        publishStatus()
     }
 
-    public var isSupported: Bool { controller.isSupported }
+    /// Лимит держит сама macOS.
+    public var usesSystemLimit: Bool { systemLimit != nil }
 
-    public var unavailableReason: String? { controller.unavailableReason }
+    /// Можно ли задать лимит.
+    public var isSupported: Bool { usesSystemLimit || controller.isSupported }
 
-    /// Снять удержание перед сном или выходом из приложения: команда
-    /// живёт в SMC сама по себе, и без работающего приложения её некому
-    /// отменить — Mac остался бы без зарядки.
+    /// Можно ли остановить зарядку по команде (перегрев, «Разряд»).
+    public var canHold: Bool { controller.isSupported }
+
+    public var unavailableReason: String? {
+        usesSystemLimit ? nil : controller.unavailableReason
+    }
+
+    public var holdUnavailableReason: String? { controller.unavailableReason }
+
+    /// Перед сном или выходом из приложения: снять удержание и вернуть
+    /// лимит. Команда удержания живёт в SMC сама по себе, и без
+    /// работающего приложения её некому отменить.
     public func releaseHold() {
-        guard !lastRequested else { return }
-        apply(true)
+        if usesSystemLimit && mode == .forceCharge {
+            mode = .limit
+            syncSystemLimit()
+        }
+        if !lastRequested {
+            apply(true)
+        }
+        publishStatus()
     }
 
     /// Причина удержания при текущих настройках; nil — зарядка разрешена.
@@ -88,13 +135,16 @@ public final class ChargeManager: ObservableObject, ChargeController,
         if thermalHold { return .overheat }
         if mode == .forceDischarge { return .manual }
         guard let charge = lastCharge else { return nil }
+        if usesSystemLimit {
+            return mode == .limit && limit < 100 && charge >= limit ? .limit : nil
+        }
         return desiredAllowed(charge: charge) ? nil : .limit
     }
 
     // MARK: - Действия пользователя
 
     public func setLimit(_ newLimit: Int) {
-        let clamped = ChargeSettings(limit: newLimit).limit
+        let clamped = normalized(newLimit)
         guard clamped != limit else { return }
         limit = clamped
         settings.limit = clamped
@@ -107,11 +157,26 @@ public final class ChargeManager: ObservableObject, ChargeController,
         evaluate()
     }
 
-    /// Повторить последнюю команду после отказа (например, helper
-    /// установили уже после запуска приложения).
+    /// Повторить команды после отказа (например, helper установили уже
+    /// после запуска приложения).
     public func retry() {
-        guard let charge = lastCharge else { return }
-        apply(desiredAllowed(charge: charge))
+        systemLimitFailed = nil
+        limitError = nil
+        if usesSystemLimit {
+            syncSystemLimit()
+            apply(desiredHoldChannelAllowed)
+        } else if let charge = lastCharge {
+            apply(desiredAllowed(charge: charge))
+        }
+        publishStatus()
+    }
+
+    /// Перечитать лимит системы: его могли изменить в Настройках macOS
+    /// или в другом приложении.
+    public func refreshFromSystem() {
+        guard usesSystemLimit, mode != .forceCharge else { return }
+        adoptSystemLimit()
+        publishStatus()
     }
 
     // MARK: - Данные батареи
@@ -133,7 +198,53 @@ public final class ChargeManager: ObservableObject, ChargeController,
         evaluate()
     }
 
-    // MARK: - Внутреннее
+    // MARK: - Лимит системы
+
+    /// Ближайшее допустимое значение лимита.
+    private func normalized(_ value: Int) -> Int {
+        let clamped = ChargeSettings(limit: value).limit
+        guard let nearest = availableLimits.min(by: {
+            abs($0 - clamped) < abs($1 - clamped)
+        }) else { return clamped }
+        return nearest
+    }
+
+    private func adoptSystemLimit() {
+        guard let current = systemLimit?.currentLimit() else { return }
+        systemLimitApplied = current
+        guard availableLimits.contains(current), current != limit else { return }
+        limit = current
+        settings.limit = current
+    }
+
+    private func syncSystemLimit() {
+        guard let systemLimit else { return }
+        // FR-003: «Заряд» — временно снять лимит.
+        let target = mode == .forceCharge ? 100 : normalized(limit)
+        guard target != systemLimitApplied, target != systemLimitFailed else {
+            return
+        }
+
+        do {
+            try systemLimit.setLimit(target)
+            systemLimitApplied = target
+            systemLimitFailed = nil
+            limitError = nil
+        } catch {
+            // Успех не заявляется: в системе остался прежний лимит.
+            systemLimitFailed = target
+            limitError = (error as? LocalizedError)?.errorDescription
+                ?? String(describing: error)
+        }
+    }
+
+    // MARK: - Удержание
+
+    /// При лимите системы каналом удержания управляют только перегрев
+    /// и режим «Разряд».
+    private var desiredHoldChannelAllowed: Bool {
+        !(thermalHold || mode == .forceDischarge)
+    }
 
     private func desiredAllowed(charge: Int) -> Bool {
         if thermalHold { return false }
@@ -143,8 +254,13 @@ public final class ChargeManager: ObservableObject, ChargeController,
     }
 
     private func evaluate() {
+        defer { publishStatus() }
+
         let desired: Bool
-        if let charge = lastCharge {
+        if usesSystemLimit {
+            syncSystemLimit()
+            desired = desiredHoldChannelAllowed
+        } else if let charge = lastCharge {
             desired = desiredAllowed(charge: charge)
         } else if thermalHold {
             // Перегрев до первого снимка заряда: удерживаем не дожидаясь.
@@ -160,7 +276,7 @@ public final class ChargeManager: ObservableObject, ChargeController,
         // Пока управление недоступно, команда не считается отправленной:
         // её нужно выполнить, как только helper появится.
         guard controller.isSupported else {
-            status = .unsupported
+            holdStatus = .unsupported
             return
         }
 
@@ -170,10 +286,35 @@ public final class ChargeManager: ObservableObject, ChargeController,
 
         if let error = controller.lastError {
             // Успех не заявляется: состояние зарядки осталось прежним.
-            status = .failed(error.errorDescription ?? String(describing: error))
+            holdStatus = .failed(
+                error.errorDescription ?? String(describing: error))
         } else {
-            status = .confirmed(allowed: allowed)
+            holdStatus = .confirmed(allowed: allowed)
             settings.lastAppliedAllowed = allowed
         }
+    }
+
+    private func publishStatus() {
+        let new: ChargeControlStatus
+        if let limitError {
+            new = .failed(limitError)
+        } else if !usesSystemLimit {
+            new = holdStatus
+        } else {
+            switch holdStatus {
+            case .idle:
+                // Лимит прочитан из системы или подтверждён ею.
+                new = .confirmed(allowed: true)
+            case .unsupported:
+                // Удержание нужно только при перегреве и «Разряде».
+                new = desiredHoldChannelAllowed
+                    ? .confirmed(allowed: true)
+                    : .failed(controller.unavailableReason
+                        ?? "Остановка зарядки недоступна")
+            case .failed, .confirmed:
+                new = holdStatus
+            }
+        }
+        if new != status { status = new }
     }
 }

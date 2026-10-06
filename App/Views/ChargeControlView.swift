@@ -27,26 +27,27 @@ struct ChargeControlView: View {
                     .foregroundColor(DesignTokens.charging)
             }
 
-            Slider(
-                value: Binding(
-                    get: { draftLimit ?? Double(manager.limit) },
-                    set: { draftLimit = $0 }),
-                in: 20...100
-            ) { editing in
-                if !editing, let draft = draftLimit {
-                    manager.setLimit(Int(draft.rounded()))
-                    draftLimit = nil
+            if manager.availableLimits.isEmpty {
+                limitSlider
+            } else {
+                // Лимит держит macOS и принимает только эти значения.
+                HStack(spacing: DesignTokens.spacing2) {
+                    ForEach(manager.availableLimits, id: \.self) { value in
+                        limitButton(value)
+                    }
                 }
             }
-            .tint(DesignTokens.charging)
-            .accessibilityLabel("Лимит заряда")
-            .accessibilityValue("\(shownLimit) процентов")
 
             HStack(spacing: DesignTokens.spacing2) {
                 modeButton(.limit, "Лимит", "gauge.medium",
                            help: "Заряжать до установленного лимита")
                 modeButton(.forceDischarge, "Разряд", "minus.circle",
-                           help: "Не заряжать, пока режим не отменён")
+                           help: manager.canHold
+                               ? "Не заряжать, пока режим не отменён"
+                               : manager.holdUnavailableReason
+                                   ?? "Остановка зарядки недоступна")
+                    .disabled(!manager.canHold)
+                    .opacity(manager.canHold ? 1 : 0.45)
                 modeButton(.forceCharge, "Заряд", "plus.circle",
                            help: "Зарядить до 100% без учёта лимита")
             }
@@ -56,6 +57,48 @@ struct ChargeControlView: View {
         .disabled(!manager.isSupported)
         .padding(DesignTokens.spacing4)
         .liquidGlassBackground(level: 2, cornerRadius: DesignTokens.radius3)
+    }
+
+    private var limitSlider: some View {
+        Slider(
+            value: Binding(
+                get: { draftLimit ?? Double(manager.limit) },
+                set: { draftLimit = $0 }),
+            in: 20...100
+        ) { editing in
+            if !editing, let draft = draftLimit {
+                manager.setLimit(Int(draft.rounded()))
+                draftLimit = nil
+            }
+        }
+        .tint(DesignTokens.charging)
+        .accessibilityLabel("Лимит заряда")
+        .accessibilityValue("\(shownLimit) процентов")
+    }
+
+    private func limitButton(_ value: Int) -> some View {
+        let isActive = manager.limit == value
+        return Button {
+            manager.setLimit(value)
+        } label: {
+            Text(value >= 100 ? "Выкл" : "\(value)%")
+                .font(.caption.monospacedDigit().weight(.semibold))
+                .foregroundColor(isActive
+                    ? DesignTokens.charging : DesignTokens.textSecondary)
+                .frame(maxWidth: .infinity, minHeight: 28)
+                .background(
+                    Capsule().fill(isActive
+                        ? DesignTokens.charging.opacity(0.2)
+                        : DesignTokens.surface3))
+                .overlay(
+                    Capsule().strokeBorder(
+                        isActive ? DesignTokens.charging.opacity(0.4)
+                                 : Color.white.opacity(0.1),
+                        lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .help(value >= 100 ? "Заряжать до 100%" : "Заряжать до \(value)%")
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 
     private func modeButton(_ mode: ChargeMode, _ title: String,
@@ -115,7 +158,7 @@ struct ChargeControlView: View {
 
         case .confirmed(let allowed):
             if allowed {
-                statusText("Зарядка разрешена", icon: "bolt.fill",
+                statusText(allowedText, icon: allowedIcon,
                            color: DesignTokens.charging)
             } else {
                 statusText(holdText, icon: "pause.circle.fill",
@@ -123,6 +166,26 @@ struct ChargeControlView: View {
                                ? DesignTokens.critical : DesignTokens.warning)
             }
         }
+    }
+
+    private var allowedText: String {
+        guard manager.usesSystemLimit else { return "Зарядка разрешена" }
+        if manager.mode == .forceCharge {
+            return "Заряд до 100%, затем вернётся лимит \(manager.limit)%"
+        }
+        if manager.limit >= 100 {
+            return "Лимит выключен — заряд до 100%"
+        }
+        if let charge = manager.lastCharge, charge > manager.limit {
+            return "Заряд выше лимита — macOS снизит его до \(manager.limit)%"
+        }
+        return manager.holdReason == .limit
+            ? "macOS держит заряд на лимите \(manager.limit)%"
+            : "macOS зарядит до \(manager.limit)% и остановится"
+    }
+
+    private var allowedIcon: String {
+        manager.holdReason == .limit ? "checkmark.shield.fill" : "bolt.fill"
     }
 
     private var holdText: String {

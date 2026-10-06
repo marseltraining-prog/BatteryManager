@@ -4,33 +4,14 @@ import MediumWellBatteryCore
 /// Вкладка «Статус»: текущий заряд, состояние, температура и мощность.
 struct StatusView: View {
     let data: BatteryInfo?
+    let chargeManager: ChargeManager
 
     var body: some View {
         if let data = data {
             VStack(spacing: DesignTokens.spacing3) {
-                Text("\(data.currentCharge)%")
-                    .font(.system(size: 56, weight: .bold, design: .rounded))
-                    .foregroundColor(data.isCharging
-                        ? DesignTokens.charging : DesignTokens.textPrimary)
-                    .frame(maxWidth: .infinity)
-
-                Text(statusText(data))
-                    .font(.headline)
-                    .foregroundColor(DesignTokens.textPrimary)
-
-                HStack(spacing: DesignTokens.spacing4) {
-                    metric("thermometer.medium", temperatureText(data))
-                    metric("bolt", powerText(data))
-                }
-                .frame(maxWidth: .infinity)
-
-                Divider().opacity(0.15)
-
-                // Распределение мощности по источникам (FR-005),
-                // обновляется раз в секунду.
-                PowerFlowView(data: data)
+                statusCard(data)
+                ChargeControlView(manager: chargeManager)
             }
-            .glassCard()
         } else {
             // Review Focus: настольный Mac — батареи нет.
             Text("Батарея не обнаружена")
@@ -39,6 +20,33 @@ struct StatusView: View {
                 .frame(maxWidth: .infinity)
                 .glassCard()
         }
+    }
+
+    private func statusCard(_ data: BatteryInfo) -> some View {
+        VStack(spacing: DesignTokens.spacing3) {
+            Text("\(data.currentCharge)%")
+                .font(.system(size: 56, weight: .bold, design: .rounded))
+                .foregroundColor(data.isCharging
+                    ? DesignTokens.charging : DesignTokens.textPrimary)
+                .frame(maxWidth: .infinity)
+
+            Text(statusText(data))
+                .font(.headline)
+                .foregroundColor(DesignTokens.textPrimary)
+
+            HStack(spacing: DesignTokens.spacing4) {
+                metric("thermometer.medium", temperatureText(data))
+                metric("bolt", powerText(data))
+            }
+            .frame(maxWidth: .infinity)
+
+            Divider().opacity(0.15)
+
+            // Распределение мощности по источникам (FR-005),
+            // обновляется раз в секунду.
+            PowerFlowView(data: data)
+        }
+        .glassCard()
     }
 
     // MARK: - Элементы

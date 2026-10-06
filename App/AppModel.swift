@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 import MediumWellBatteryCore
@@ -26,7 +27,9 @@ final class AppModel: ObservableObject {
     @Published var selectedTab: PopoverTab = .status
 
     let batteryService = BatteryService()
-    let temperatureMonitor = TemperatureMonitor()
+    /// Лимит заряда, ручные режимы и удержание при перегреве.
+    let chargeManager: ChargeManager
+    let temperatureMonitor: TemperatureMonitor
 
     let historyStore: HistoryStore?
     private let historyRecorder: HistoryRecorder?
@@ -37,8 +40,16 @@ final class AppModel: ObservableObject {
         label: "com.mediumwell.battery.charts", qos: .utility)
     private var chartTimer: DispatchSourceTimer?
     private var started = false
+    /// Счётчик засыпаний: отменяет отложенный запуск после пробуждения.
+    private var wakeGeneration = 0
 
     init() {
+        // Перегрев отключает зарядку через менеджер: после остывания
+        // действует лимит пользователя, а не безусловное «заряжать».
+        let chargeManager = ChargeManager(controller: HelperChargeController())
+        self.chargeManager = chargeManager
+        temperatureMonitor = TemperatureMonitor(controller: chargeManager)
+
         let store = try? HistoryStore(
             databaseURL: HistoryStore.defaultDatabaseURL())
         historyStore = store
@@ -68,8 +79,17 @@ final class AppModel: ObservableObject {
         batteryService.$currentData
             .compactMap { $0 }
             .sink { [weak self] info in
+                self?.chargeManager.update(charge: info.currentCharge)
                 self?.temperatureMonitor.evaluate(info)
             }
+            .store(in: &cancellables)
+
+        // Представления наблюдают модель, а данные живут во вложенных
+        // сервисах — их изменения пробрасываются наружу.
+        batteryService.objectWillChange
+            .merge(with: chargeManager.objectWillChange)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
 
         // Уведомления о нагреве и о возобновлении заряда (FR-010, FR-011).
@@ -78,7 +98,43 @@ final class AppModel: ObservableObject {
                                   temperature: value)
         }
 
+        observeSleep()
         startChartRefresh()
+    }
+
+    /// Сон (NFR-006): мониторинг и запись истории приостанавливаются,
+    /// а удержание заряда снимается — во сне приложение не работает
+    /// и не смогло бы вернуть зарядку. После пробуждения всё
+    /// возобновляется через 5 секунд, когда данные батареи устоятся.
+    private func observeSleep() {
+        let center = NSWorkspace.shared.notificationCenter
+
+        center.publisher(for: NSWorkspace.willSleepNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                NSLog("BatteryManager: сон — мониторинг приостановлен")
+                self.wakeGeneration += 1
+                self.chargeManager.releaseHold()
+                self.batteryService.stopMonitoring()
+                self.historyRecorder?.stop()
+            }
+            .store(in: &cancellables)
+
+        center.publisher(for: NSWorkspace.didWakeNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                let generation = self.wakeGeneration
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+                    // Mac успел снова уснуть — этот запуск уже не нужен.
+                    guard let self, self.wakeGeneration == generation else { return }
+                    NSLog("BatteryManager: пробуждение — мониторинг возобновлён")
+                    self.batteryService.startMonitoring()
+                    self.historyRecorder?.start()
+                }
+            }
+            .store(in: &cancellables)
     }
 
     /// Перечитывает историю за 24 часа и обновляет точки графиков.

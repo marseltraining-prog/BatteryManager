@@ -59,12 +59,15 @@ public struct ChargeControlKey: Equatable, Sendable {
 
 public enum ChargeControlError: Error, Equatable, LocalizedError {
     case noSupportedKey
+    case helperNotInstalled
     case writeFailed(key: String, reason: String)
 
     public var errorDescription: String? {
         switch self {
         case .noSupportedKey:
             return "На этой модели не найден поддерживаемый ключ управления зарядом"
+        case .helperNotInstalled:
+            return "Не установлен привилегированный helper"
         case .writeFailed(let key, let reason):
             return "Не удалось записать \(key): \(reason)"
         }
@@ -75,11 +78,17 @@ public enum ChargeControlError: Error, Equatable, LocalizedError {
 ///
 /// Ключ выбирается по факту наличия в SMC: на новых macOS это CHTE,
 /// на Apple Silicon — CH0B/CH0C, на некоторых моделях — CHSC.
-/// Запись требует прав root, поэтому в приложении используется
-/// привилегированный helper (см. scripts/install-helper.sh).
+/// Запись требует прав root, поэтому приложение управляет зарядом через
+/// `HelperChargeController`; этот класс — та же логика выбора ключа
+/// внутри процесса (тесты и диагностика).
 public final class SMCChargeController: ChargeController {
     private let smc: any SMCWriting
     private let candidates: [ChargeControlKey]
+
+    /// Ключ, у которого последняя запись прошла удачно. Запоминается,
+    /// чтобы не перебирать кандидатов на каждой команде.
+    private let keyLock = NSLock()
+    private nonisolated(unsafe) var storedWorkingKey: ChargeControlKey?
 
     /// Последняя ошибка записи — для отображения в интерфейсе.
     /// Доступ под замком: контроллер вызывается и из монитора температуры,
@@ -109,7 +118,14 @@ public final class SMCChargeController: ChargeController {
 
     /// Ключ, доступный на этой машине (первый существующий).
     public var detectedKey: ChargeControlKey? {
-        candidates.first { smc.read($0.key) != nil }
+        workingKey ?? candidates.first { smc.read($0.key) != nil }
+    }
+
+    /// Ключ, записью которого уже удалось управлять зарядом.
+    public var workingKey: ChargeControlKey? {
+        keyLock.lock()
+        defer { keyLock.unlock() }
+        return storedWorkingKey
     }
 
     /// Есть ли на этой машине поддерживаемый ключ.
@@ -118,25 +134,44 @@ public final class SMCChargeController: ChargeController {
     }
 
     /// Разрешить или запретить зарядку (FR-001, FR-003).
+    ///
+    /// Кандидаты перебираются по порядку: ключ может существовать,
+    /// но быть защищённым от записи (SMC `0x86`) — так ведёт себя `CHSC`
+    /// на моделях с macOS 27, где реально управляет адаптером `CHIE`.
+    /// Найденный ключ запоминается.
     public func setChargingAllowed(_ allowed: Bool) {
-        guard let key = detectedKey else {
+        let order = [workingKey].compactMap { $0 }
+            + candidates.filter { candidate in
+                candidate != workingKey && smc.read(candidate.key) != nil
+            }
+
+        guard !order.isEmpty else {
             setLastError(.noSupportedKey)
             return
         }
 
-        let value = allowed ? key.allowValue : key.holdValue
+        var lastFailure: ChargeControlError?
+        for key in order {
+            do {
+                let value = allowed ? key.allowValue : key.holdValue
+                try smc.write(key.key, bytes: value)
+                if let companion = key.companionKey {
+                    try smc.write(companion, bytes: value)
+                }
 
-        do {
-            try smc.write(key.key, bytes: value)
-            if let companion = key.companionKey {
-                try smc.write(companion, bytes: value)
+                keyLock.lock()
+                storedWorkingKey = key
+                keyLock.unlock()
+                setLastError(nil)
+                return
+            } catch {
+                lastFailure = .writeFailed(
+                    key: key.key,
+                    reason: (error as? LocalizedError)?.errorDescription
+                        ?? String(describing: error))
             }
-            setLastError(nil)
-        } catch {
-            setLastError(.writeFailed(
-                key: key.key,
-                reason: (error as? LocalizedError)?.errorDescription
-                    ?? String(describing: error)))
         }
+
+        setLastError(lastFailure ?? .noSupportedKey)
     }
 }

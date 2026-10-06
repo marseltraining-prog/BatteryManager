@@ -27,6 +27,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.setActivationPolicy(.regular)
     }
 
+    /// Выход: удержание заряда снимается, иначе оно осталось бы в SMC
+    /// без приложения, которое может его отменить.
+    func applicationWillTerminate(_ notification: Notification) {
+        AppModel.shared.chargeManager.releaseHold()
+    }
+
     /// Панель со статусом батареи — открывается по клику на иконку Dock.
     func showPanel() {
         NSLog("BatteryManager: показываю панель")

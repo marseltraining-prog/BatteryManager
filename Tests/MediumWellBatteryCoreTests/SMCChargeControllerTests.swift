@@ -118,6 +118,35 @@ struct SMCChargeControllerTests {
         #expect(smc.recordedWrites.isEmpty)
     }
 
+    /// Регрессия этой машины: CHSC существует, но защищён от записи (SMC 0x86),
+    /// CHIE — записываемый. Контроллер обязан перейти к следующему кандидату,
+    /// а не сдаться на первом.
+    @Test func fallsThroughReadOnlyKeyToWritableOne() {
+        let smc = FakeSMC(values: ["CHSC": [0], "CHIE": [0]],
+                          failingKeys: ["CHSC"])
+        let controller = SMCChargeController(smc: smc)
+
+        controller.setChargingAllowed(false)
+
+        #expect(smc.recordedWrites.map(\.key) == ["CHIE"])
+        // 08 — «адаптер выключен», удержание заряда.
+        #expect(smc.recordedWrites.first?.value == [0x08])
+        #expect(controller.lastError == nil)
+    }
+
+    /// Найденный ключ запоминается: вторая команда не перебирает кандидатов зря.
+    @Test func remembersWorkingKeyAfterFirstSuccess() {
+        let smc = FakeSMC(values: ["CHSC": [0], "CHIE": [0]],
+                          failingKeys: ["CHSC"])
+        let controller = SMCChargeController(smc: smc)
+
+        controller.setChargingAllowed(false)
+        controller.setChargingAllowed(true)
+
+        #expect(smc.recordedWrites.map(\.key) == ["CHIE", "CHIE"])
+        #expect(smc.recordedWrites.last?.value == [0x00])
+    }
+
     @Test func unsupportedModelReportsNoSupportedKey() {
         let controller = SMCChargeController(smc: FakeSMC(values: [:]))
 

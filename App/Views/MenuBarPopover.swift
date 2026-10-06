@@ -76,6 +76,10 @@ struct MenuBarPopover: View {
 
         case .health:
             HealthView(data: model.batteryService.currentData)
+
+        case .settings:
+            SettingsView(settings: model.chargeSettings,
+                         chargeManager: model.chargeManager)
         }
     }
 

@@ -7,6 +7,7 @@ public struct ChargeSettingsStore: @unchecked Sendable {
     private enum Key {
         static let limit = "chargeLimit"
         static let lastAppliedAllowed = "chargeLastAppliedAllowed"
+        static let keepHoldDuringSleep = "chargeKeepHoldDuringSleep"
     }
 
     public init(defaults: UserDefaults = .standard) {
@@ -38,5 +39,12 @@ public struct ChargeSettingsStore: @unchecked Sendable {
         nonmutating set {
             defaults.set(newValue, forKey: Key.lastAppliedAllowed)
         }
+    }
+
+    /// Сохранять удержание заряда во сне. По умолчанию выключено:
+    /// во сне приложение не работает и не может вернуть зарядку.
+    public var keepHoldDuringSleep: Bool {
+        get { defaults.bool(forKey: Key.keepHoldDuringSleep) }
+        nonmutating set { defaults.set(newValue, forKey: Key.keepHoldDuringSleep) }
     }
 }

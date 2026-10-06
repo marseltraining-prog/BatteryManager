@@ -102,4 +102,23 @@ struct BatteryMetricsTests {
 
         #expect(absurd.healthPercentage == 100)
     }
+
+    @Test func percentOfDesignUsesDesignCapacity() {
+        let info = BatteryInfo(
+            currentCharge: 80, maxCapacity: 4486, designCapacity: 4629,
+            isCharging: false, isPluggedIn: false, voltage: 12, amperage: 0,
+            temperature: nil, cycleCount: 85, nominalCapacity: 4613)
+        #expect(info.percentOfDesign(4486) == 97)
+        #expect(info.percentOfDesign(4613) == 100)
+        #expect(info.nominalCapacity == 4613)
+    }
+
+    @Test func percentOfDesignIsNilWithoutDesignCapacity() {
+        let info = BatteryInfo(
+            currentCharge: 80, maxCapacity: 4486, designCapacity: 0,
+            isCharging: false, isPluggedIn: false, voltage: 12, amperage: 0,
+            temperature: nil, cycleCount: 85, nominalCapacity: 0)
+        #expect(info.percentOfDesign(4486) == nil)
+        #expect(info.nominalCapacity == nil)
+    }
 }

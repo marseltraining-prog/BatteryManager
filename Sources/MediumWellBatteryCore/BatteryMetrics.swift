@@ -16,12 +16,16 @@ public struct BatteryInfo: Equatable, Sendable {
     public let systemPowerWatts: Double?
     /// Мощность, идущая в батарею (PowerTelemetryData.BatteryPower, mW → W).
     public let batteryPowerWatts: Double?
+    /// Ёмкость по оценке macOS (BatteryData.NominalChargeCapacity, mAh) —
+    /// по ней система считает «Максимальную ёмкость» в настройках.
+    public let nominalCapacity: Int?
 
     public init(currentCharge: Int, maxCapacity: Int, designCapacity: Int,
                 isCharging: Bool, isPluggedIn: Bool, voltage: Double,
                 amperage: Double, temperature: Double?, cycleCount: Int,
                 adapterWatts: Double? = nil, systemPowerWatts: Double? = nil,
-                batteryPowerWatts: Double? = nil) {
+                batteryPowerWatts: Double? = nil,
+                nominalCapacity: Int? = nil) {
         self.currentCharge = min(max(currentCharge, 0), 100)
         self.maxCapacity = max(maxCapacity, 0)
         self.designCapacity = max(designCapacity, 0)
@@ -34,6 +38,14 @@ public struct BatteryInfo: Equatable, Sendable {
         self.adapterWatts = adapterWatts
         self.systemPowerWatts = systemPowerWatts
         self.batteryPowerWatts = batteryPowerWatts
+        self.nominalCapacity = nominalCapacity.flatMap { $0 > 0 ? $0 : nil }
+    }
+
+    /// Доля ёмкости от проектной, %. nil — проектная ёмкость неизвестна.
+    /// Не ограничивается сверху: новая батарея бывает чуть больше паспорта.
+    public func percentOfDesign(_ capacity: Int) -> Int? {
+        guard designCapacity > 0, capacity > 0 else { return nil }
+        return Int((Double(capacity) / Double(designCapacity) * 100).rounded())
     }
 
     public var healthPercentage: Int {

@@ -13,8 +13,9 @@ cd "$(dirname "$0")/.."
 ROOT="$(pwd -P)"
 
 CLT="/Library/Developer/CommandLineTools"
-SDK="${SDKROOT:-$CLT/SDKs/MacOSX26.5.sdk}"
-TARGET="arm64-apple-macosx27"
+# SDK и архитектура берутся с машины сборки; минимальная система — macOS 13.
+SDK="${SDKROOT:-$(xcrun --show-sdk-path 2>/dev/null || echo "$CLT/SDKs/MacOSX.sdk")}"
+TARGET="$(uname -m)-apple-macosx13.0"
 # Версия для Info.plist: Apple требует до трёх чисел через точку,
 # поэтому убираем префикс «v» и суффикс предрелиза (v1.0.0-beta → 1.0.0).
 VERSION="$(git describe --tags --abbrev=0 2>/dev/null | sed -e 's/^v//' -e 's/-.*$//' || true)"

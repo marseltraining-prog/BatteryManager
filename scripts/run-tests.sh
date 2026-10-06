@@ -12,8 +12,9 @@ cd "$(dirname "$0")/.."
 ROOT="$(pwd -P)"
 
 CLT="/Library/Developer/CommandLineTools"
-SDK="${SDKROOT:-$CLT/SDKs/MacOSX26.5.sdk}"
-TARGET="arm64-apple-macosx27"
+# Тесты собираются под систему машины сборки (Swift Testing требует новую).
+SDK="${SDKROOT:-$(xcrun --show-sdk-path 2>/dev/null || echo "$CLT/SDKs/MacOSX.sdk")}"
+TARGET="$(uname -m)-apple-macosx$(sw_vers -productVersion | cut -d. -f1)"
 TMP="$ROOT/.tmp"
 BUILD="$TMP/build"
 MODULE_CACHE="$TMP/module-cache"

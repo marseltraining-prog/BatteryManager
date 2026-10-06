@@ -22,11 +22,21 @@ struct HealthView: View {
 
                 Divider().opacity(0.15)
 
-                row("Проектная ёмкость", "\(data.designCapacity) mAh")
-                row("Максимальная ёмкость", "\(data.maxCapacity) mAh")
-                row("Здоровье", "\(data.healthPercentage)%")
+                row("Проектная ёмкость", capacityText(data, data.designCapacity))
+                row("Максимальная ёмкость", capacityText(data, data.maxCapacity))
+                // Оценка macOS: по ней система считает «Максимальную
+                // ёмкость» в Настройках, поэтому цифры могут расходиться.
+                row("Ёмкость macOS", capacityText(data, data.nominalCapacity))
                 row("Количество циклов", "\(data.cycleCount)")
                 row("Состояние", conditionText(data.condition))
+
+                if let advice = advice(data.condition) {
+                    Divider().opacity(0.15)
+                    Label(advice, systemImage: "wrench.and.screwdriver")
+                        .font(.caption)
+                        .foregroundColor(healthColor(data.healthPercentage))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .glassCard()
         } else {
@@ -48,6 +58,29 @@ struct HealthView: View {
                 .monospacedDigit()
         }
         .font(.subheadline)
+    }
+
+    /// «4486 mAh  97%»; «—», если система не отдала значение.
+    private func capacityText(_ data: BatteryInfo, _ capacity: Int?) -> String {
+        guard let capacity, capacity > 0 else { return "—" }
+        guard let percent = data.percentOfDesign(capacity) else {
+            return "\(capacity) mAh"
+        }
+        return "\(capacity) mAh  \(percent)%"
+    }
+
+    /// Рекомендация по обслуживанию (FR-016); nil — батарея в норме.
+    private func advice(_ condition: BatteryCondition) -> String? {
+        switch condition {
+        case .replaceSoon:
+            return "Ёмкость заметно снизилась. Батарея работает, но стоит "
+                + "запланировать замену."
+        case .serviceBattery:
+            return "Ёмкость ниже 60% от проектной. Рекомендуется замена "
+                + "батареи в сервисе."
+        case .normal, .unknown:
+            return nil
+        }
     }
 
     private func healthColor(_ percentage: Int) -> Color {

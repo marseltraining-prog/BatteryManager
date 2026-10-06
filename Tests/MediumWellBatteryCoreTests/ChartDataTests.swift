@@ -118,3 +118,31 @@ struct ChartDataTests {
         #expect(ChartData.points(from: records).charge.first?.id == base)
     }
 }
+
+@Suite
+struct ChartHoverTests {
+    private let base = Date(timeIntervalSince1970: 1_000_000)
+    private var dates: [Date] {
+        [0, 60, 120, 3600].map { base.addingTimeInterval($0) }
+    }
+
+    @Test func picksNearestPoint() {
+        #expect(ChartData.nearestIndex(to: base.addingTimeInterval(25), in: dates) == 0)
+        #expect(ChartData.nearestIndex(to: base.addingTimeInterval(35), in: dates) == 1)
+        #expect(ChartData.nearestIndex(to: base.addingTimeInterval(125), in: dates) == 2)
+    }
+
+    @Test func clampsOutsideRangeWithinTolerance() {
+        #expect(ChartData.nearestIndex(to: base.addingTimeInterval(-30), in: dates) == 0)
+        #expect(ChartData.nearestIndex(to: base.addingTimeInterval(3700), in: dates) == 3)
+    }
+
+    /// В разрыве истории (Mac спал) значения нет — подсказка не показывается.
+    @Test func gapReturnsNil() {
+        #expect(ChartData.nearestIndex(to: base.addingTimeInterval(1800), in: dates) == nil)
+    }
+
+    @Test func emptyHistoryReturnsNil() {
+        #expect(ChartData.nearestIndex(to: base, in: []) == nil)
+    }
+}

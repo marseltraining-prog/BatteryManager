@@ -8,6 +8,9 @@ struct ChartsView: View {
     let data: ChartData
     var historyUnavailable: Bool = false
 
+    /// Точка под курсором: какой график и индекс точки (FR-015).
+    @State private var hover: (chart: String, index: Int)?
+
     var body: some View {
         VStack(spacing: DesignTokens.spacing3) {
             if historyUnavailable {
@@ -24,7 +27,8 @@ struct ChartsView: View {
             powerCard
 
             Text("Данные за последние 24 часа, запись раз в минуту. "
-                 + "Разрыв линии — приложение не работало.")
+                 + "Разрыв линии — приложение не работало. "
+                 + "Наведите курсор на график, чтобы увидеть значение.")
                 .font(.caption2)
                 .foregroundColor(DesignTokens.textTertiary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -45,7 +49,9 @@ struct ChartsView: View {
             title: "Заряд батареи",
             unit: "%",
             currentValue: data.charge.last.map { "\($0.value)%" },
-            domain: 0...100
+            domain: 0...100,
+            dates: data.charge.map(\.date),
+            valueText: { "\(data.charge[$0].value)%" }
         ) {
             ForEach(data.charge) { point in
                 // Заливка под линией (FR-007).
@@ -76,8 +82,18 @@ struct ChartsView: View {
             title: "Температура батареи",
             unit: "°C",
             currentValue: data.temperature.last.map { String(format: "%.1f °C", $0.value) },
-            domain: 0...50
+            domain: 0...50,
+            dates: data.temperature.map(\.date),
+            valueText: { String(format: "%.1f °C", data.temperature[$0].value) }
         ) {
+            // Зоны перегрева (FR-008): пороги предупреждения и критики.
+            RuleMark(y: .value("Предупреждение", 35))
+                .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                .foregroundStyle(DesignTokens.warning.opacity(0.5))
+            RuleMark(y: .value("Критично", 40))
+                .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                .foregroundStyle(DesignTokens.critical.opacity(0.5))
+
             ForEach(data.temperature) { point in
                 LineMark(
                     x: .value("Время", point.date),
@@ -97,7 +113,9 @@ struct ChartsView: View {
             currentValue: data.power.last.map {
                 String(format: "%+.1f Вт", $0.value)
             },
-            domain: nil
+            domain: nil,
+            dates: data.power.map(\.date),
+            valueText: { String(format: "%+.1f Вт", data.power[$0].value) }
         ) {
             ForEach(data.power) { point in
                 LineMark(
@@ -124,6 +142,16 @@ struct ChartsView: View {
 
     // MARK: - Карточка графика
 
+    /// Вертикальная линия на точке под курсором.
+    @ChartContentBuilder
+    private func hoverRule(_ date: Date?) -> some ChartContent {
+        if let date {
+            RuleMark(x: .value("Время", date))
+                .lineStyle(StrokeStyle(lineWidth: 1))
+                .foregroundStyle(Color.white.opacity(0.35))
+        }
+    }
+
     /// Карточка одного графика: название, текущее значение, оси с подписями.
     @ViewBuilder
     private func chartCard<Content: ChartContent>(
@@ -131,27 +159,63 @@ struct ChartsView: View {
         unit: String,
         currentValue: String?,
         domain: ClosedRange<Double>?,
+        dates: [Date],
+        valueText: @escaping (Int) -> String,
         @ChartContentBuilder content: () -> Content
     ) -> some View {
+        // Данные могли обновиться, пока курсор над графиком.
+        let hoveredIndex = hover.flatMap {
+            $0.chart == title && $0.index < dates.count ? $0.index : nil
+        }
+        let hoveredDate = hoveredIndex.map { dates[$0] }
+        let headerValue = hoveredIndex.map {
+            "\(dates[$0].formatted(date: .omitted, time: .shortened))  "
+                + valueText($0)
+        } ?? currentValue
+
         VStack(alignment: .leading, spacing: DesignTokens.spacing2) {
             HStack(alignment: .firstTextBaseline) {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(DesignTokens.textPrimary)
                 Spacer()
-                if let currentValue {
-                    Text(currentValue)
+                if let headerValue {
+                    Text(headerValue)
                         .font(.subheadline.monospacedDigit().weight(.semibold))
-                        .foregroundColor(DesignTokens.textPrimary)
+                        .foregroundColor(hoveredIndex == nil
+                            ? DesignTokens.textPrimary : DesignTokens.charging)
                 }
             }
 
             Group {
                 if let domain {
-                    Chart { content() }
+                    Chart { content(); hoverRule(hoveredDate) }
                         .chartYScale(domain: domain)
                 } else {
-                    Chart { content() }
+                    Chart { content(); hoverRule(hoveredDate) }
+                }
+            }
+            .chartOverlay { proxy in
+                GeometryReader { geometry in
+                    Rectangle()
+                        .fill(Color.clear)
+                        .contentShape(Rectangle())
+                        .onContinuousHover { phase in
+                            switch phase {
+                            case .active(let location):
+                                let x = location.x
+                                    - geometry[proxy.plotAreaFrame].origin.x
+                                if let date: Date = proxy.value(atX: x),
+                                   let index = ChartData.nearestIndex(
+                                    to: date, in: dates) {
+                                    hover = (title, index)
+                                } else {
+                                    hover = nil
+                                }
+                            case .ended:
+                                hover = nil
+                            }
+                        }
                 }
             }
             .chartXAxis {

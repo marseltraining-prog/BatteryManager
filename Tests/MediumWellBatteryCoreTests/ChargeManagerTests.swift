@@ -60,6 +60,13 @@ struct ChargeSettingsStoreTests {
         #expect(ChargeSettingsStore(defaults: defaults).limit == 20)
     }
 
+    @Test func keepHoldDuringSleepIsOffByDefaultAndPersisted() {
+        let defaults = makeDefaults()
+        #expect(!ChargeSettingsStore(defaults: defaults).keepHoldDuringSleep)
+        ChargeSettingsStore(defaults: defaults).keepHoldDuringSleep = true
+        #expect(ChargeSettingsStore(defaults: defaults).keepHoldDuringSleep)
+    }
+
     @Test func lastAppliedStateIsPersisted() {
         let defaults = makeDefaults()
         ChargeSettingsStore(defaults: defaults).lastAppliedAllowed = false

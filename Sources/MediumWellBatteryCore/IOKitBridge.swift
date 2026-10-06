@@ -40,6 +40,7 @@ public final class IOKitBridge: Sendable {
         let batteryData = battery.dict("BatteryData") ?? [:]
         let designCapacity = batteryData.int("DesignCapacity") ?? 0
         let maxCapacity = batteryData.int("FullChargeCapacity") ?? 0
+        let nominalCapacity = batteryData.int("NominalChargeCapacity")
 
         // Электрика: Voltage в mV, InstantAmperage в mA.
         let voltage = (battery.double("Voltage") ?? 0) / 1000.0
@@ -86,7 +87,8 @@ public final class IOKitBridge: Sendable {
             cycleCount: cycleCount,
             adapterWatts: adapterWatts,
             systemPowerWatts: systemPowerWatts,
-            batteryPowerWatts: batteryPowerWatts
+            batteryPowerWatts: batteryPowerWatts,
+            nominalCapacity: nominalCapacity
         )
     }
 

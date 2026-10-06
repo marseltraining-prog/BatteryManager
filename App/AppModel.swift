@@ -8,6 +8,7 @@ enum PopoverTab: String, CaseIterable, Identifiable {
     case status = "Статус"
     case charts = "Графики"
     case health = "Здоровье"
+    case settings = "Настройки"
 
     var id: String { rawValue }
 }
@@ -26,6 +27,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var historyUnavailable = false
     @Published var selectedTab: PopoverTab = .status
 
+    let chargeSettings = ChargeSettingsStore()
     let batteryService = BatteryService()
     /// Лимит заряда, ручные режимы и удержание при перегреве.
     let chargeManager: ChargeManager
@@ -46,7 +48,8 @@ final class AppModel: ObservableObject {
     init() {
         // Перегрев отключает зарядку через менеджер: после остывания
         // действует лимит пользователя, а не безусловное «заряжать».
-        let chargeManager = ChargeManager(controller: HelperChargeController())
+        let chargeManager = ChargeManager(
+            controller: HelperChargeController(), settings: chargeSettings)
         self.chargeManager = chargeManager
         temperatureMonitor = TemperatureMonitor(controller: chargeManager)
 
@@ -104,7 +107,7 @@ final class AppModel: ObservableObject {
 
     /// Сон (NFR-006): мониторинг и запись истории приостанавливаются,
     /// а удержание заряда снимается — во сне приложение не работает
-    /// и не смогло бы вернуть зарядку. После пробуждения всё
+    /// и не смогло бы вернуть зарядку (отключается в настройках). После пробуждения всё
     /// возобновляется через 5 секунд, когда данные батареи устоятся.
     private func observeSleep() {
         let center = NSWorkspace.shared.notificationCenter
@@ -115,7 +118,9 @@ final class AppModel: ObservableObject {
                 guard let self else { return }
                 NSLog("BatteryManager: сон — мониторинг приостановлен")
                 self.wakeGeneration += 1
-                self.chargeManager.releaseHold()
+                if !self.chargeSettings.keepHoldDuringSleep {
+                    self.chargeManager.releaseHold()
+                }
                 self.batteryService.stopMonitoring()
                 self.historyRecorder?.stop()
             }

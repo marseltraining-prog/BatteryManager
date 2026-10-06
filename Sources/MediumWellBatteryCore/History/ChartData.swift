@@ -78,3 +78,34 @@ public struct ChartData: Equatable, Sendable {
         return ChartData(charge: charge, temperature: temperature, power: power)
     }
 }
+
+public extension ChartData {
+    /// Индекс точки, ближайшей по времени к `date` (наведение на график,
+    /// FR-015). `dates` отсортированы по возрастанию. nil — точек нет
+    /// или ближайшая дальше `tolerance`: в разрыве истории показывать нечего.
+    static func nearestIndex(
+        to date: Date,
+        in dates: [Date],
+        tolerance: TimeInterval = 15 * 60
+    ) -> Int? {
+        guard !dates.isEmpty else { return nil }
+
+        var low = 0
+        var high = dates.count - 1
+        while low < high {
+            let middle = (low + high) / 2
+            if dates[middle] < date { low = middle + 1 } else { high = middle }
+        }
+
+        var best = low
+        if low > 0,
+           abs(dates[low - 1].timeIntervalSince(date))
+            <= abs(dates[low].timeIntervalSince(date)) {
+            best = low - 1
+        }
+        guard abs(dates[best].timeIntervalSince(date)) <= tolerance else {
+            return nil
+        }
+        return best
+    }
+}

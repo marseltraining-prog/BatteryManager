@@ -24,11 +24,10 @@ struct StatusView: View {
 
     private func statusCard(_ data: BatteryInfo) -> some View {
         VStack(spacing: DesignTokens.spacing3) {
-            Text("\(data.currentCharge)%")
-                .font(.system(size: 56, weight: .bold, design: .rounded))
-                .foregroundColor(data.isCharging
-                    ? DesignTokens.charging : DesignTokens.textPrimary)
-                .frame(maxWidth: .infinity)
+            ChargeBar(charge: data.currentCharge,
+                      limit: chargeManager.limit,
+                      isCharging: data.isCharging,
+                      isPluggedIn: data.isPluggedIn)
 
             Text(statusText(data))
                 .font(.headline)
@@ -89,5 +88,58 @@ struct StatusView: View {
             return String(format: "%.1f W", systemPowerWatts)
         }
         return "—"
+    }
+}
+
+/// Полоса заряда: заполнение — текущий заряд, вертикальная метка — лимит.
+private struct ChargeBar: View {
+    let charge: Int
+    let limit: Int
+    let isCharging: Bool
+    let isPluggedIn: Bool
+
+    private var color: Color {
+        isCharging ? DesignTokens.charging : DesignTokens.discharging
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.white.opacity(0.08))
+
+                Capsule()
+                    .fill(LinearGradient(
+                        colors: [color.opacity(0.55), color.opacity(0.85)],
+                        startPoint: .leading, endPoint: .trailing))
+                    .frame(width: max(width * CGFloat(charge) / 100, 44))
+
+                HStack(spacing: DesignTokens.spacing2) {
+                    Text("\(charge)%")
+                        .font(.title3.monospacedDigit().weight(.bold))
+                    if isPluggedIn {
+                        Image(systemName: isCharging
+                              ? "bolt.fill" : "powerplug.fill")
+                            .font(.subheadline)
+                    }
+                }
+                .foregroundColor(DesignTokens.textPrimary)
+                .shadow(color: .black.opacity(0.45), radius: 2)
+                .padding(.leading, DesignTokens.spacing3)
+
+                if limit < 100 {
+                    Capsule()
+                        .fill(Color.white.opacity(0.85))
+                        .frame(width: 4, height: geometry.size.height + 8)
+                        .offset(x: width * CGFloat(limit) / 100 - 2)
+                        .help("Лимит заряда \(limit)%")
+                }
+            }
+            .animation(.easeOut(duration: 0.4), value: charge)
+        }
+        .frame(height: 36)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Заряд \(charge) процентов"
+            + (limit < 100 ? ", лимит \(limit) процентов" : ""))
     }
 }

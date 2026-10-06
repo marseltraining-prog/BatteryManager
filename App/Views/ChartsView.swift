@@ -117,16 +117,18 @@ struct ChartsView: View {
             dates: data.power.map(\.date),
             valueText: { String(format: "%+.1f Вт", data.power[$0].value) }
         ) {
-            ForEach(data.power) { point in
-                LineMark(
-                    x: .value("Время", point.date),
-                    y: .value("Мощность", point.value),
-                    series: .value("Серия", point.segment)
-                )
-                .interpolationMethod(.catmullRom)
-                // Плюс — зарядка (зелёный), минус — разрядка (голубой), FR-009.
-                .foregroundStyle(
-                    point.value >= 0 ? DesignTokens.charging : DesignTokens.discharging)
+            // Плюс — зарядка (зелёный), минус — разрядка (голубой), FR-009.
+            // Линия красится целиком, поэтому знаки — отдельные участки.
+            ForEach(ChartData.powerRuns(data.power)) { run in
+                ForEach(run.points) { point in
+                    LineMark(
+                        x: .value("Время", point.date),
+                        y: .value("Мощность", point.value),
+                        series: .value("Серия", run.id)
+                    )
+                    .foregroundStyle(run.isPositive
+                        ? DesignTokens.charging : DesignTokens.discharging)
+                }
             }
         }
     }

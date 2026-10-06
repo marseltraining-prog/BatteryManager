@@ -146,3 +146,44 @@ struct ChartHoverTests {
         #expect(ChartData.nearestIndex(to: base, in: []) == nil)
     }
 }
+
+@Suite
+struct PowerRunTests {
+    private let base = Date(timeIntervalSince1970: 1_000_000)
+
+    private func point(_ index: Int, _ value: Double, segment: Int = 0) -> PowerPoint {
+        PowerPoint(date: base.addingTimeInterval(Double(index) * 60),
+                   value: value, isCharging: value > 0, segment: segment)
+    }
+
+    @Test func sameSignIsOneRun() {
+        let runs = ChartData.powerRuns([point(0, 5), point(1, 0), point(2, 8)])
+        #expect(runs.count == 1)
+        #expect(runs[0].isPositive)
+        #expect(runs[0].points.count == 3)
+    }
+
+    /// Смена знака: граничная точка общая, линия не рвётся.
+    @Test func signChangeSplitsRunsSharingBoundaryPoint() {
+        let runs = ChartData.powerRuns(
+            [point(0, 5), point(1, 6), point(2, -9), point(3, -10)])
+        #expect(runs.map(\.isPositive) == [true, false])
+        #expect(runs[0].points.map(\.value) == [5, 6, -9])
+        #expect(runs[1].points.map(\.value) == [-9, -10])
+        #expect(runs.map(\.id) == [0, 1])
+    }
+
+    /// Разрыв истории: участки не соединяются даже при одном знаке.
+    @Test func historyGapSplitsRunsWithoutSharedPoint() {
+        let runs = ChartData.powerRuns(
+            [point(0, -5), point(1, -6, segment: 1), point(2, 4, segment: 1)])
+        #expect(runs.count == 3)
+        #expect(runs[0].points.map(\.value) == [-5])
+        #expect(runs[1].points.map(\.value) == [-6, 4])
+        #expect(runs[2].points.map(\.value) == [4])
+    }
+
+    @Test func emptyInputGivesNoRuns() {
+        #expect(ChartData.powerRuns([]).isEmpty)
+    }
+}

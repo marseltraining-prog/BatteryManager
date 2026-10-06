@@ -109,3 +109,48 @@ public extension ChartData {
         return best
     }
 }
+
+/// Непрерывный участок графика мощности одного знака: линия на графике
+/// красится целиком, поэтому зарядка и разрядка рисуются отдельными
+/// участками (FR-009).
+public struct PowerRun: Identifiable, Equatable, Sendable {
+    public let id: Int
+    /// true — зарядка (мощность ≥ 0), false — разрядка.
+    public let isPositive: Bool
+    public let points: [PowerPoint]
+}
+
+public extension ChartData {
+    /// Делит точки мощности на участки по знаку и по разрывам истории.
+    /// При смене знака граничная точка входит в оба участка, чтобы линия
+    /// не рвалась; через разрыв истории участки не соединяются.
+    static func powerRuns(_ points: [PowerPoint]) -> [PowerRun] {
+        var runs: [PowerRun] = []
+        var current: [PowerPoint] = []
+        var currentPositive = true
+
+        func flush() {
+            guard !current.isEmpty else { return }
+            runs.append(PowerRun(id: runs.count, isPositive: currentPositive,
+                                 points: current))
+        }
+
+        for point in points {
+            let positive = point.value >= 0
+            if let last = current.last {
+                if last.segment != point.segment {
+                    flush()
+                    current = []
+                } else if positive != currentPositive {
+                    current.append(point)
+                    flush()
+                    current = []
+                }
+            }
+            if current.isEmpty { currentPositive = positive }
+            current.append(point)
+        }
+        flush()
+        return runs
+    }
+}

@@ -62,13 +62,13 @@ struct MenuBarPopover: View {
     private var content: some View {
         switch model.selectedTab {
         case .status:
-            ScrollView {
+            ScrollView(showsIndicators: false) {
                 StatusView(data: model.batteryService.currentData,
                            chargeManager: model.chargeManager)
             }
 
         case .charts:
-            ScrollView {
+            ScrollView(showsIndicators: false) {
                 ChartsView(data: model.chartData,
                            historyUnavailable: model.historyUnavailable)
             }

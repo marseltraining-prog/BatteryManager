@@ -18,21 +18,30 @@ public struct PowerFlow: Equatable, Sendable {
 
     /// Батарея отдаёт больше этого порога — источник она, а не адаптер.
     /// Порог отсекает шум измерений около нуля.
-    static let dischargeThreshold = 0.5
+    public static let dischargeThreshold = 0.5
 
     public init(_ info: BatteryInfo) {
         let batteryPower = info.batteryPowerWatts ?? 0
-        let discharging = batteryPower < -Self.dischargeThreshold
 
-        source = info.isPluggedIn && !discharging ? .adapter : .battery
+        if let adapterInput = info.adapterInputWatts {
+            // Есть датчик входа: источник — адаптер, пока он даёт питание.
+            source = adapterInput > Self.dischargeThreshold ? .adapter : .battery
+        } else {
+            let discharging = batteryPower < -Self.dischargeThreshold
+            source = info.isPluggedIn && !discharging ? .adapter : .battery
+        }
         toBattery = source == .adapter ? max(batteryPower, 0) : 0
 
         if let system = info.systemPowerWatts, system > 0 {
             toSystem = system
+        } else if source == .battery {
+            // Телеметрии системы нет или она невалидна: всё, что отдаёт
+            // батарея, потребляет система. Модуль — потому что в момент
+            // отключения адаптера знак в телеметрии бывает перевёрнут.
+            toSystem = batteryPower != 0
+                ? abs(batteryPower) : abs(info.powerWatts)
         } else {
-            // Телеметрии системы нет: при разрядке всё, что отдаёт
-            // батарея, потребляет система.
-            toSystem = max(-batteryPower, 0)
+            toSystem = 0
         }
     }
 

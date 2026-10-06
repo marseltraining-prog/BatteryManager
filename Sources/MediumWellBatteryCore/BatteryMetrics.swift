@@ -19,13 +19,17 @@ public struct BatteryInfo: Equatable, Sendable {
     /// Ёмкость по оценке macOS (BatteryData.NominalChargeCapacity, mAh) —
     /// по ней система считает «Максимальную ёмкость» в настройках.
     public let nominalCapacity: Int?
+    /// Мощность, реально приходящая от адаптера, Вт (датчик SMC);
+    /// nil — датчика нет.
+    public let adapterInputWatts: Double?
 
     public init(currentCharge: Int, maxCapacity: Int, designCapacity: Int,
                 isCharging: Bool, isPluggedIn: Bool, voltage: Double,
                 amperage: Double, temperature: Double?, cycleCount: Int,
                 adapterWatts: Double? = nil, systemPowerWatts: Double? = nil,
                 batteryPowerWatts: Double? = nil,
-                nominalCapacity: Int? = nil) {
+                nominalCapacity: Int? = nil,
+                adapterInputWatts: Double? = nil) {
         self.currentCharge = min(max(currentCharge, 0), 100)
         self.maxCapacity = max(maxCapacity, 0)
         self.designCapacity = max(designCapacity, 0)
@@ -39,6 +43,7 @@ public struct BatteryInfo: Equatable, Sendable {
         self.systemPowerWatts = systemPowerWatts
         self.batteryPowerWatts = batteryPowerWatts
         self.nominalCapacity = nominalCapacity.flatMap { $0 > 0 ? $0 : nil }
+        self.adapterInputWatts = adapterInputWatts
     }
 
     /// Доля ёмкости от проектной, %. nil — проектная ёмкость неизвестна.

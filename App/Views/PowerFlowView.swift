@@ -76,10 +76,16 @@ struct PowerFlowView: View {
                 .fill(DesignTokens.surface4))
     }
 
-    /// У адаптера — паспортная мощность, у батареи — сколько она отдаёт.
+    /// Сколько источник отдаёт прямо сейчас; у адаптера без датчика
+    /// входа — паспортная мощность.
     private var sourceText: String {
-        if flow.source == .adapter, let rated = data.adapterWatts {
-            return String(format: "%.0f W", rated)
+        if flow.source == .adapter {
+            if let input = data.adapterInputWatts {
+                return String(format: "%.1f W", input)
+            }
+            if let rated = data.adapterWatts {
+                return String(format: "%.0f W", rated)
+            }
         }
         return String(format: "%.1f W", flow.total)
     }

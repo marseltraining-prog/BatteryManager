@@ -60,4 +60,35 @@ struct PowerFlowTests {
         #expect(flow.total == 0)
         #expect(flow.batteryShare == 0)
     }
+
+    /// Регрессия: сразу после отключения адаптера телеметрия отдаёт
+    /// перевёрнутые знаки (система −15,9, батарея +15,9) — поток не должен
+    /// показывать 0 Вт.
+    @Test func invertedTelemetryAfterUnplugStillShowsSystemLoad() {
+        let flow = PowerFlow(info(plugged: false, charging: false,
+                                  battery: 15.9, system: -15.9))
+        #expect(flow.source == .battery)
+        #expect(flow.toBattery == 0)
+        #expect(flow.toSystem == 15.9)
+    }
+
+    /// Датчик входа адаптера важнее флага «подключено»: адаптер вставлен,
+    /// но отключён лимитом — питает батарея.
+    @Test func adapterInputSensorDecidesSource() {
+        let held = BatteryInfo(
+            currentCharge: 90, maxCapacity: 4500, designCapacity: 4629,
+            isCharging: false, isPluggedIn: true, voltage: 12, amperage: 1,
+            temperature: 30, cycleCount: 85, adapterWatts: 30,
+            systemPowerWatts: 9, batteryPowerWatts: -9, adapterInputWatts: 0.3)
+        #expect(PowerFlow(held).source == .battery)
+
+        let charging = BatteryInfo(
+            currentCharge: 80, maxCapacity: 4500, designCapacity: 4629,
+            isCharging: true, isPluggedIn: true, voltage: 12, amperage: 1,
+            temperature: 30, cycleCount: 85, adapterWatts: 30,
+            systemPowerWatts: 11.4, batteryPowerWatts: 16.8,
+            adapterInputWatts: 28.2)
+        #expect(PowerFlow(charging).source == .adapter)
+        #expect(PowerFlow(charging).toBattery == 16.8)
+    }
 }

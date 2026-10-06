@@ -7,7 +7,12 @@ import IOKit
 /// мощности) и узел `AppleSmartBatteryPack` (температура). Возвращает
 /// `nil`, если батарея не обнаружена — например, на настольном Mac.
 public final class IOKitBridge: Sendable {
-    public init() {}
+    /// Мгновенные датчики мощности; телеметрия IOKit — запасной источник.
+    private let sensors: SMCPowerSensors
+
+    public init(sensors: SMCPowerSensors = SMCPowerSensors()) {
+        self.sensors = sensors
+    }
 
     /// Снимок данных батареи прямо сейчас.
     public func getBatteryInfo() -> BatteryInfo? {
@@ -20,7 +25,7 @@ public final class IOKitBridge: Sendable {
         }
 
         let isPluggedIn = battery.bool("ExternalConnected")
-        let isCharging = battery.bool("IsCharging")
+        var isCharging = battery.bool("IsCharging")
         let cycleCount = battery.int("CycleCount") ?? 0
 
         // Заряд: на этой машине CurrentCapacity в процентах (MaxCapacity == 100),
@@ -62,6 +67,18 @@ public final class IOKitBridge: Sendable {
             batteryPowerWatts = telemetry.double("BatteryPower").map { $0 / 1000.0 }
         }
 
+        // Датчики SMC обновляются каждую секунду, телеметрия IOKit — раз
+        // в 20–60 с и врёт в момент подключения адаптера. Если датчики
+        // есть, мощность и признак зарядки берутся из них.
+        var adapterInputWatts: Double?
+        if let reading = sensors.read() {
+            adapterInputWatts = reading.adapterInput
+            systemPowerWatts = reading.system
+            batteryPowerWatts = reading.battery
+            isCharging = isPluggedIn
+                && reading.battery > PowerFlow.dischargeThreshold
+        }
+
         // Температура из AppleSmartBatteryPack: ключи Temperature / VirtualTemperature
         // лежат внутри словаря BatteryData узла pack.
         var temperature: Double?
@@ -88,7 +105,8 @@ public final class IOKitBridge: Sendable {
             adapterWatts: adapterWatts,
             systemPowerWatts: systemPowerWatts,
             batteryPowerWatts: batteryPowerWatts,
-            nominalCapacity: nominalCapacity
+            nominalCapacity: nominalCapacity,
+            adapterInputWatts: adapterInputWatts
         )
     }
 

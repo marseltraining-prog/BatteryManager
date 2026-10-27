@@ -121,4 +121,22 @@ struct BatteryMetricsTests {
         #expect(info.percentOfDesign(4486) == nil)
         #expect(info.nominalCapacity == nil)
     }
+
+    /// Значения с реальной машины: значок 81%, а по счёту лимита macOS 77,9%.
+    @Test func systemChargeUsesNominalCapacity() {
+        let info = BatteryInfo(
+            currentCharge: 81, maxCapacity: 4371, designCapacity: 4629,
+            isCharging: true, isPluggedIn: true, voltage: 12.6, amperage: 1.2,
+            temperature: 30, cycleCount: 90, nominalCapacity: 4498,
+            remainingCapacity: 3503)
+        #expect(abs((info.systemChargePercent ?? 0) - 77.88) < 0.01)
+    }
+
+    @Test func systemChargeIsNilWithoutCapacities() {
+        let info = BatteryInfo(
+            currentCharge: 81, maxCapacity: 4371, designCapacity: 4629,
+            isCharging: true, isPluggedIn: true, voltage: 12.6, amperage: 1.2,
+            temperature: 30, cycleCount: 90)
+        #expect(info.systemChargePercent == nil)
+    }
 }

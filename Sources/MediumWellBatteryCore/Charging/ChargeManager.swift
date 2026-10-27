@@ -80,8 +80,14 @@ public final class ChargeManager: ObservableObject, ChargeController,
     private var fallbackHold = false
     private var isPluggedIn = false
     private var isCharging = false
-    /// Лимит системы уже переустанавливался при этом подключении.
-    private var bypassKickDone = false
+    /// Когда лимит системы переустанавливался последний раз.
+    private var lastKick: Date?
+    /// Переустанавливать лимит не чаще, чем раз в этот интервал.
+    static let kickInterval: TimeInterval = 10 * 60
+    /// Насколько заряд (по счёту системы) может превысить лимит, прежде
+    /// чем это считается сбоем: запас на шаг обновления остатка (~0,5%).
+    static let bypassMargin = 1.0
+    private let now: () -> Date
     /// Лимит, подтверждённый системой.
     private var systemLimitApplied: Int?
     /// Лимит, который система отклонила, — повторно не отправляется.
@@ -90,8 +96,10 @@ public final class ChargeManager: ObservableObject, ChargeController,
 
     public init(controller: any ReportingChargeController,
                 systemLimit: (any SystemChargeLimiting)? = nil,
-                settings: ChargeSettingsStore = ChargeSettingsStore()) {
+                settings: ChargeSettingsStore = ChargeSettingsStore(),
+                now: @escaping () -> Date = Date.init) {
         self.controller = controller
+        self.now = now
         self.settings = settings
         self.limit = settings.limit
         self.lastRequested = settings.lastAppliedAllowed
@@ -192,13 +200,16 @@ public final class ChargeManager: ObservableObject, ChargeController,
     // MARK: - Данные батареи
 
     /// Вызывается на каждом снимке батареи.
+    /// - Parameter systemCharge: заряд по счёту лимита macOS
+    ///   (`BatteryInfo.systemChargePercent`); nil — считать по `charge`.
     public func update(charge: Int, isCharging: Bool = false,
-                       isPluggedIn: Bool = false) {
+                       isPluggedIn: Bool = false,
+                       systemCharge: Double? = nil) {
         lastCharge = charge
         self.isCharging = isCharging
         self.isPluggedIn = isPluggedIn
         if usesSystemLimit {
-            watchSystemLimit(charge: charge)
+            watchSystemLimit(charge: systemCharge ?? Double(charge))
         }
         // FR-003: принудительный заряд сам выключается на 100%.
         if mode == .forceCharge && charge >= 100 {
@@ -256,39 +267,46 @@ public final class ChargeManager: ObservableObject, ChargeController,
 
     /// Сторож лимита системы. macOS 27 не включает лимит, если адаптер
     /// подключили во сне, — заряд уходит до 100%. Если заряд при
-    /// подключённом адаптере пошёл выше лимита, лимит переустанавливается,
-    /// а зарядку останавливает helper, пока заряд не вернётся к лимиту.
-    private func watchSystemLimit(charge: Int) {
+    /// подключённом адаптере заметно превысил лимит, лимит
+    /// переустанавливается, а зарядку останавливает helper, пока заряд
+    /// не вернётся ниже лимита.
+    ///
+    /// Заряд считается так же, как его считает система: иначе обычная
+    /// остановка на 81–82% по значку выглядела бы как сбой.
+    private func watchSystemLimit(charge: Double) {
         let limitActive = mode == .limit && limit < 100
-        guard isPluggedIn, limitActive else {
-            // Адаптер отключён или лимит не нужен — следить не за чем.
+        guard limitActive else {
             systemLimitBypassed = false
             fallbackHold = false
-            bypassKickDone = false
             return
         }
 
-        if isCharging && charge > limit {
+        if fallbackHold {
+            // Пока helper держит адаптер отключённым, система видит Mac
+            // как отключённый от сети — признак «подключено» тут неверен.
+            // Удержание снимается только по заряду.
+            if charge < Double(limit) {
+                fallbackHold = false
+            }
+            return
+        }
+
+        guard isPluggedIn else { return }
+
+        if isCharging && charge >= Double(limit) + Self.bypassMargin {
             if !systemLimitBypassed {
                 NSLog("BatteryManager: macOS не применяет лимит %d%% "
-                      + "(заряд %d%%) — переустанавливаю", limit, charge)
+                      + "(заряд %.1f%%) — останавливаю зарядку", limit, charge)
             }
             systemLimitBypassed = true
-            if !bypassKickDone {
-                bypassKickDone = true
+            if lastKick.map({ now().timeIntervalSince($0) >= Self.kickInterval }) ?? true {
+                lastKick = now()
                 kickSystemLimit()
             }
             if canHold { fallbackHold = true }
-        } else if !isCharging && charge >= limit && !fallbackHold {
-            // Система сама держит заряд на лимите — всё в порядке.
+        } else if !isCharging && charge >= Double(limit) - 1 {
+            // Система сама держит заряд у лимита — всё в порядке.
             systemLimitBypassed = false
-        }
-
-        // Удержание снимается, когда заряд вернулся ниже лимита:
-        // дальше его снова держит система, а если нет — сторож сработает
-        // ещё раз на следующем проценте.
-        if fallbackHold && charge < limit {
-            fallbackHold = false
         }
     }
 

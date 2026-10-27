@@ -22,6 +22,8 @@ public struct BatteryInfo: Equatable, Sendable {
     /// Мощность, реально приходящая от адаптера, Вт (датчик SMC);
     /// nil — датчика нет.
     public let adapterInputWatts: Double?
+    /// Остаток заряда, mAh (BatteryData.RemainingCapacity).
+    public let remainingCapacity: Int?
 
     public init(currentCharge: Int, maxCapacity: Int, designCapacity: Int,
                 isCharging: Bool, isPluggedIn: Bool, voltage: Double,
@@ -29,7 +31,8 @@ public struct BatteryInfo: Equatable, Sendable {
                 adapterWatts: Double? = nil, systemPowerWatts: Double? = nil,
                 batteryPowerWatts: Double? = nil,
                 nominalCapacity: Int? = nil,
-                adapterInputWatts: Double? = nil) {
+                adapterInputWatts: Double? = nil,
+                remainingCapacity: Int? = nil) {
         self.currentCharge = min(max(currentCharge, 0), 100)
         self.maxCapacity = max(maxCapacity, 0)
         self.designCapacity = max(designCapacity, 0)
@@ -44,6 +47,16 @@ public struct BatteryInfo: Equatable, Sendable {
         self.batteryPowerWatts = batteryPowerWatts
         self.nominalCapacity = nominalCapacity.flatMap { $0 > 0 ? $0 : nil }
         self.adapterInputWatts = adapterInputWatts
+        self.remainingCapacity = remainingCapacity.flatMap { $0 > 0 ? $0 : nil }
+    }
+
+    /// Заряд так, как его считает лимит macOS: остаток от ёмкости по
+    /// оценке системы (NominalChargeCapacity), %. Отличается от
+    /// показанного процента на 1–3%: тот считается от другой ёмкости.
+    public var systemChargePercent: Double? {
+        guard let remaining = remainingCapacity,
+              let nominal = nominalCapacity, nominal > 0 else { return nil }
+        return Double(remaining) / Double(nominal) * 100
     }
 
     /// Доля ёмкости от проектной, %. nil — проектная ёмкость неизвестна.

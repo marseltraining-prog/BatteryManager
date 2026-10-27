@@ -86,7 +86,8 @@ final class AppModel: ObservableObject {
             .sink { [weak self] info in
                 self?.chargeManager.update(
                     charge: info.currentCharge, isCharging: info.isCharging,
-                    isPluggedIn: info.isPluggedIn)
+                    isPluggedIn: info.isPluggedIn,
+                    systemCharge: info.systemChargePercent)
                 self?.temperatureMonitor.evaluate(info)
             }
             .store(in: &cancellables)

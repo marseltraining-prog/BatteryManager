@@ -472,42 +472,70 @@ struct ChargeManagerSystemLimitTests {
 
     // MARK: - Сторож лимита системы
 
+    private final class Clock: @unchecked Sendable {
+        var date = Date(timeIntervalSince1970: 1_000_000)
+    }
+
+    private func makeWatched(
+        controller: FakeController = FakeController()
+    ) -> (ChargeManager, FakeSystemLimit, FakeController, Clock) {
+        let system = FakeSystemLimit()
+        system.current = 80
+        let clock = Clock()
+        let name = "Watchdog-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        let manager = ChargeManager(
+            controller: controller, systemLimit: system,
+            settings: ChargeSettingsStore(defaults: defaults),
+            now: { clock.date })
+        return (manager, system, controller, clock)
+    }
+
     /// Регрессия: адаптер подключили во сне, macOS не включила лимит,
     /// заряд пошёл выше. Лимит переустанавливается, helper держит заряд.
     @Test func bypassedLimitIsReappliedAndHeldByHelper() {
-        let system = FakeSystemLimit()
-        system.current = 80
-        let (manager, _, controller, _) = make(system: system)
-        manager.update(charge: 80, isCharging: true, isPluggedIn: true)
+        let (manager, system, controller, _) = makeWatched()
+        manager.update(charge: 83, isCharging: true, isPluggedIn: true,
+                       systemCharge: 80.7)
         #expect(!manager.systemLimitBypassed)
         #expect(controller.calls.isEmpty)
 
-        manager.update(charge: 81, isCharging: true, isPluggedIn: true)
+        manager.update(charge: 84, isCharging: true, isPluggedIn: true,
+                       systemCharge: 82.1)
         #expect(manager.systemLimitBypassed)
         #expect(system.writes == [85, 80])
         #expect(controller.calls == [false])
         #expect(manager.holdReason == .limit)
         #expect(manager.status == .confirmed(allowed: false))
-
-        // Удержание helper: адаптер отключён, заряд снижается.
-        manager.update(charge: 80, isCharging: false, isPluggedIn: true)
-        #expect(controller.calls == [false])
-        manager.update(charge: 79, isCharging: false, isPluggedIn: true)
-        #expect(controller.calls == [false, true])
-
-        // Переустановка повторяется не чаще раза за подключение.
-        manager.update(charge: 81, isCharging: true, isPluggedIn: true)
-        #expect(system.writes == [85, 80])
-        #expect(controller.calls == [false, true, false])
     }
 
-    /// Система держит заряд сама — сторож ничего не делает.
-    @Test func workingSystemLimitIsLeftAlone() {
-        let system = FakeSystemLimit()
-        system.current = 80
-        let (manager, _, controller, _) = make(system: system)
-        manager.update(charge: 80, isCharging: false, isPluggedIn: true)
-        manager.update(charge: 80, isCharging: false, isPluggedIn: true)
+    /// Регрессия: при отключённом адаптере система считает Mac отключённым
+    /// от сети — удержание не должно сниматься и включаться каждую секунду.
+    @Test func fallbackHoldDoesNotFlapWhenAdapterLooksUnplugged() {
+        let (manager, _, controller, _) = makeWatched()
+        manager.update(charge: 84, isCharging: true, isPluggedIn: true,
+                       systemCharge: 82.5)
+        for _ in 0..<5 {
+            manager.update(charge: 84, isCharging: false, isPluggedIn: false,
+                           systemCharge: 82.4)
+            manager.update(charge: 84, isCharging: false, isPluggedIn: true,
+                           systemCharge: 82.4)
+        }
+        #expect(controller.calls == [false])
+
+        manager.update(charge: 81, isCharging: false, isPluggedIn: false,
+                       systemCharge: 79.9)
+        #expect(controller.calls == [false, true])
+    }
+
+    /// Обычная остановка системы на 81–82% по значку — не сбой.
+    @Test func normalOvershootByDisplayedPercentIsNotABypass() {
+        let (manager, system, controller, _) = makeWatched()
+        manager.update(charge: 82, isCharging: true, isPluggedIn: true,
+                       systemCharge: 79.6)
+        manager.update(charge: 82, isCharging: false, isPluggedIn: true,
+                       systemCharge: 80.1)
         #expect(!manager.systemLimitBypassed)
         #expect(system.writes.isEmpty)
         #expect(controller.calls.isEmpty)
@@ -515,47 +543,61 @@ struct ChargeManagerSystemLimitTests {
 
     /// Выше лимита без зарядки — macOS снижает заряд сама, это не сбой.
     @Test func drainingAboveLimitIsNotABypass() {
-        let system = FakeSystemLimit()
-        system.current = 80
-        let (manager, _, controller, _) = make(system: system)
-        manager.update(charge: 95, isCharging: false, isPluggedIn: true)
+        let (manager, _, controller, _) = makeWatched()
+        manager.update(charge: 95, isCharging: false, isPluggedIn: true,
+                       systemCharge: 93)
         #expect(!manager.systemLimitBypassed)
         #expect(controller.calls.isEmpty)
     }
 
-    @Test func unplugReleasesFallbackHold() {
-        let system = FakeSystemLimit()
-        system.current = 80
-        let (manager, _, controller, _) = make(system: system)
-        manager.update(charge: 85, isCharging: true, isPluggedIn: true)
-        #expect(controller.calls == [false])
-        manager.update(charge: 85, isCharging: false, isPluggedIn: false)
-        #expect(!manager.systemLimitBypassed)
-        #expect(controller.calls == [false, true])
+    /// Переустановка лимита — не чаще раза в 10 минут.
+    @Test func kickIsRateLimited() {
+        let (manager, system, _, clock) = makeWatched()
+        manager.update(charge: 85, isCharging: true, isPluggedIn: true,
+                       systemCharge: 83)
+        manager.update(charge: 79, isCharging: false, isPluggedIn: true,
+                       systemCharge: 79)
+        clock.date += 60
+        manager.update(charge: 85, isCharging: true, isPluggedIn: true,
+                       systemCharge: 83)
+        #expect(system.writes == [85, 80])
+        manager.update(charge: 79, isCharging: false, isPluggedIn: true,
+                       systemCharge: 79)
+        clock.date += 11 * 60
+        manager.update(charge: 85, isCharging: true, isPluggedIn: true,
+                       systemCharge: 83)
+        #expect(system.writes == [85, 80, 85, 80])
     }
 
     /// «Заряд» до 100% — заряд выше лимита ожидаем, это не сбой.
     @Test func forceChargeIsNotABypass() {
-        let system = FakeSystemLimit()
-        system.current = 80
-        let (manager, _, controller, _) = make(system: system)
+        let (manager, _, controller, _) = makeWatched()
         manager.setMode(.forceCharge)
-        manager.update(charge: 90, isCharging: true, isPluggedIn: true)
+        manager.update(charge: 90, isCharging: true, isPluggedIn: true,
+                       systemCharge: 88)
         #expect(!manager.systemLimitBypassed)
         #expect(controller.calls.isEmpty)
     }
 
     /// Без helper — только предупреждение и переустановка лимита.
     @Test func bypassWithoutHelperIsReported() {
-        let system = FakeSystemLimit()
-        system.current = 80
         let controller = FakeController()
         controller.isSupported = false
-        let (manager, _, _, _) = make(system: system, controller: controller)
-        manager.update(charge: 82, isCharging: true, isPluggedIn: true)
+        let (manager, system, _, _) = makeWatched(controller: controller)
+        manager.update(charge: 85, isCharging: true, isPluggedIn: true,
+                       systemCharge: 83)
         #expect(manager.systemLimitBypassed)
         #expect(system.writes == [85, 80])
         #expect(controller.calls.isEmpty)
+    }
+
+    /// Без данных о ёмкости сторож считает по показанному проценту.
+    @Test func displayedChargeIsUsedWithoutSystemCharge() {
+        let (manager, _, controller, _) = makeWatched()
+        manager.update(charge: 80, isCharging: true, isPluggedIn: true)
+        #expect(controller.calls.isEmpty)
+        manager.update(charge: 81, isCharging: true, isPluggedIn: true)
+        #expect(controller.calls == [false])
     }
 
     /// Система без лимита (старая macOS) — работает прежняя схема через helper.

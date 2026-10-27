@@ -84,7 +84,9 @@ final class AppModel: ObservableObject {
         batteryService.$currentData
             .compactMap { $0 }
             .sink { [weak self] info in
-                self?.chargeManager.update(charge: info.currentCharge)
+                self?.chargeManager.update(
+                    charge: info.currentCharge, isCharging: info.isCharging,
+                    isPluggedIn: info.isPluggedIn)
                 self?.temperatureMonitor.evaluate(info)
             }
             .store(in: &cancellables)

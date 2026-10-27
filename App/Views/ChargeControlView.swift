@@ -131,6 +131,20 @@ struct ChargeControlView: View {
 
     @ViewBuilder
     private var statusLine: some View {
+        if manager.systemLimitBypassed {
+            statusText(manager.canHold
+                       ? "macOS не применила лимит — приложение остановило зарядку само"
+                       : "macOS не применила лимит, заряд идёт выше \(manager.limit)%. "
+                         + "Установите helper, чтобы приложение могло остановить зарядку",
+                       icon: "exclamationmark.triangle.fill",
+                       color: DesignTokens.warning)
+        } else {
+            regularStatusLine
+        }
+    }
+
+    @ViewBuilder
+    private var regularStatusLine: some View {
         switch manager.status {
         case .unsupported:
             statusText(manager.unavailableReason

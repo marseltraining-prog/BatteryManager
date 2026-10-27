@@ -11,6 +11,9 @@ public protocol SystemChargeLimiting: Sendable {
     var availableLimits: [Int] { get }
     /// Текущий лимит, %; nil — прочитать не удалось.
     func currentLimit() -> Int?
+    /// Лимит, который система применяет на самом деле, %. Может
+    /// отличаться от `currentLimit()`: лимит записан, но не действует.
+    func effectiveLimit() -> Int?
     /// Записывает лимит. Значение должно быть из `availableLimits`.
     func setLimit(_ percent: Int) throws
 }
@@ -100,6 +103,20 @@ public final class SystemChargeLimit: SystemChargeLimiting, @unchecked Sendable 
         var error: NSError?
         let value = Int(function(
             client, NSSelectorFromString("getMCLLimitWithError:"), &error))
+        guard error == nil, (1...100).contains(value) else { return nil }
+        return value
+    }
+
+    public func effectiveLimit() -> Int? {
+        typealias GetEffective =
+            @convention(c) (AnyObject, Selector, ErrorPointer) -> UInt64
+        guard let function: GetEffective = method("currentChargeLimit:"),
+              let client else { return nil }
+        lock.lock()
+        defer { lock.unlock() }
+        var error: NSError?
+        let value = Int(function(
+            client, NSSelectorFromString("currentChargeLimit:"), &error))
         guard error == nil, (1...100).contains(value) else { return nil }
         return value
     }

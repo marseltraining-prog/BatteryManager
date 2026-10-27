@@ -62,6 +62,9 @@ public final class ChargeManager: ObservableObject, ChargeController,
     /// Значения лимита, которые принимает система; пусто — лимита системы
     /// нет и допустимо любое значение 20...100.
     @Published public private(set) var availableLimits: [Int] = []
+    /// macOS не применяет лимит: при подключённом адаптере заряд пошёл
+    /// выше лимита (так бывает, если адаптер подключили во сне).
+    @Published public private(set) var systemLimitBypassed = false
 
     private let controller: any ReportingChargeController
     private let systemLimit: (any SystemChargeLimiting)?
@@ -73,6 +76,12 @@ public final class ChargeManager: ObservableObject, ChargeController,
     private var lastRequested: Bool
     /// Состояние канала удержания.
     private var holdStatus: ChargeControlStatus = .idle
+    /// Удержание helper вместо не сработавшего лимита системы.
+    private var fallbackHold = false
+    private var isPluggedIn = false
+    private var isCharging = false
+    /// Лимит системы уже переустанавливался при этом подключении.
+    private var bypassKickDone = false
     /// Лимит, подтверждённый системой.
     private var systemLimitApplied: Int?
     /// Лимит, который система отклонила, — повторно не отправляется.
@@ -134,6 +143,7 @@ public final class ChargeManager: ObservableObject, ChargeController,
     public var holdReason: ChargeHoldReason? {
         if thermalHold { return .overheat }
         if mode == .forceDischarge { return .manual }
+        if fallbackHold { return .limit }
         guard let charge = lastCharge else { return nil }
         if usesSystemLimit {
             return mode == .limit && limit < 100 && charge >= limit ? .limit : nil
@@ -182,8 +192,14 @@ public final class ChargeManager: ObservableObject, ChargeController,
     // MARK: - Данные батареи
 
     /// Вызывается на каждом снимке батареи.
-    public func update(charge: Int) {
+    public func update(charge: Int, isCharging: Bool = false,
+                       isPluggedIn: Bool = false) {
         lastCharge = charge
+        self.isCharging = isCharging
+        self.isPluggedIn = isPluggedIn
+        if usesSystemLimit {
+            watchSystemLimit(charge: charge)
+        }
         // FR-003: принудительный заряд сам выключается на 100%.
         if mode == .forceCharge && charge >= 100 {
             mode = .limit
@@ -238,12 +254,66 @@ public final class ChargeManager: ObservableObject, ChargeController,
         }
     }
 
+    /// Сторож лимита системы. macOS 27 не включает лимит, если адаптер
+    /// подключили во сне, — заряд уходит до 100%. Если заряд при
+    /// подключённом адаптере пошёл выше лимита, лимит переустанавливается,
+    /// а зарядку останавливает helper, пока заряд не вернётся к лимиту.
+    private func watchSystemLimit(charge: Int) {
+        let limitActive = mode == .limit && limit < 100
+        guard isPluggedIn, limitActive else {
+            // Адаптер отключён или лимит не нужен — следить не за чем.
+            systemLimitBypassed = false
+            fallbackHold = false
+            bypassKickDone = false
+            return
+        }
+
+        if isCharging && charge > limit {
+            if !systemLimitBypassed {
+                NSLog("BatteryManager: macOS не применяет лимит %d%% "
+                      + "(заряд %d%%) — переустанавливаю", limit, charge)
+            }
+            systemLimitBypassed = true
+            if !bypassKickDone {
+                bypassKickDone = true
+                kickSystemLimit()
+            }
+            if canHold { fallbackHold = true }
+        } else if !isCharging && charge >= limit && !fallbackHold {
+            // Система сама держит заряд на лимите — всё в порядке.
+            systemLimitBypassed = false
+        }
+
+        // Удержание снимается, когда заряд вернулся ниже лимита:
+        // дальше его снова держит система, а если нет — сторож сработает
+        // ещё раз на следующем проценте.
+        if fallbackHold && charge < limit {
+            fallbackHold = false
+        }
+    }
+
+    /// Переустановка лимита: запись соседнего значения и обратно
+    /// заставляет систему заново применить лимит.
+    private func kickSystemLimit() {
+        guard let systemLimit else { return }
+        let other = availableLimits.first { $0 != limit && $0 < 100 }
+            ?? availableLimits.first { $0 != limit }
+        do {
+            if let other { try systemLimit.setLimit(other) }
+            try systemLimit.setLimit(limit)
+            systemLimitApplied = limit
+        } catch {
+            limitError = (error as? LocalizedError)?.errorDescription
+                ?? String(describing: error)
+        }
+    }
+
     // MARK: - Удержание
 
     /// При лимите системы каналом удержания управляют только перегрев
     /// и режим «Разряд».
     private var desiredHoldChannelAllowed: Bool {
-        !(thermalHold || mode == .forceDischarge)
+        !(thermalHold || mode == .forceDischarge || fallbackHold)
     }
 
     private func desiredAllowed(charge: Int) -> Bool {
